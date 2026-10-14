@@ -347,7 +347,7 @@ fun ConcertApp() {
                         modifier = Modifier.fillMaxWidth(),
                         onClick = {
                             try {
-                                prefs.edit().putInt("active_event_id", target.id).apply()
+                                prefs.edit().putInt("active_event_id", target.id).putString("active_event_title", target.title).apply()
                                 if (target.url.isNotBlank()) {
                                     openConcertLink(context, target.url)
                                     persist(concerts, "已快速尝试进入目标演出入口：" + target.title + "。请确认页面确实对应目标演出。")
