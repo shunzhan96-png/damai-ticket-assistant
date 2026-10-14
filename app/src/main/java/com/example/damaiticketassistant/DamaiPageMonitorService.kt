@@ -133,7 +133,7 @@ class DamaiPageMonitorService : AccessibilityService() {
 
         val state = when {
             containsAny(pageText, "验证码", "安全验证", "滑动验证", "人机验证") ->
-                "检测到验证码/安全验证，请本人完成；自动操作已保持停止"
+                "检测到验证码/安全验证，请本人完成；助手不会尝试处理验证"
             containsAny(pageText, "排队中", "排队等待", "前方还有", "排队人数") ->
                 "检测到官方排队页面，请按大麦页面提示等待"
             containsAny(pageText, "确认支付", "立即支付", "支付订单", "收银台") ->
