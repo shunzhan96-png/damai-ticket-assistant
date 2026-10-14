@@ -128,7 +128,7 @@ fun ConcertApp() {
                             }) { Text("重设提醒") }
                             TextButton(onClick={
                                 AlarmScheduler.cancel(context,c.id)
-                                persist(concerts, "已删除演出："+c.title, )
+                                persist(concerts.filterNot { it.id == c.id }, "已删除演出："+c.title)
                             }) { Text("删除") }
                         }
                     }
@@ -150,11 +150,11 @@ fun ConcertApp() {
             ) {
                 Text("只需填写演出名称和开售时间。链接可选，保存后自动安排提前10分钟提醒。", style=MaterialTheme.typography.bodyMedium)
                 OutlinedTextField(
-                    value=title, onValueChange={title=it}, label={Text("演出名称（必填）"},
+                    value=title, onValueChange={title=it}, label={Text("演出名称（必填）")},
                     singleLine=true, modifier=Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
-                    value=url, onValueChange={url=it}, label={Text("大麦活动链接（选填）"},
+                    value=url, onValueChange={url=it}, label={Text("大麦活动链接（选填）")},
                     singleLine=true, modifier=Modifier.fillMaxWidth()
                 )
                 OutlinedButton(
