@@ -52,6 +52,7 @@ fun ConcertApp() {
     val scope = rememberCoroutineScope()
     var concerts by remember { mutableStateOf(loadConcerts(prefs)) }
     var showAdd by remember { mutableStateOf(false) }
+    var quickPrepConcert by remember { mutableStateOf<Concert?>(null) }
     var title by remember { mutableStateOf("") }
     var url by remember { mutableStateOf("") }
     var saleTime by remember { mutableLongStateOf(System.currentTimeMillis() + 7L * 24 * 60 * 60 * 1000) }
@@ -111,6 +112,7 @@ fun ConcertApp() {
                         val remain=c.saleTime-now
                         Text(if(remain<=0) "已到开售时间" else "倒计时："+formatDuration(remain), style=MaterialTheme.typography.bodyLarge)
                         Text("开售："+SimpleDateFormat("yyyy-MM-dd HH:mm",Locale.getDefault()).format(Date(c.saleTime)))
+                        OutlinedButton(onClick={ quickPrepConcert = c }, modifier=Modifier.fillMaxWidth()) { Text("购票准备清单") }
                         Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                             Button(onClick={
                                 try {
