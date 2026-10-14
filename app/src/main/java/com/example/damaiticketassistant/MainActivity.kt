@@ -73,6 +73,7 @@ fun ConcertApp() {
                 ?: "尚未启用页面状态识别服务"
             pageMonitorUpdatedAt = prefs.getLong("page_monitor_updated_at", 0L)
             monitorEnabled = prefs.getBoolean("monitor_enabled", false)
+            log = prefs.getString("log_last", "暂无操作记录") ?: "暂无操作记录"
             kotlinx.coroutines.delay(1000)
         }
     }
