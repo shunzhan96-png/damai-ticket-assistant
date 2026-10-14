@@ -126,9 +126,11 @@ fun ConcertApp() {
                                 val trigger=c.saleTime-10*60*1000L
                                 if(trigger>System.currentTimeMillis()) {
                                     AlarmScheduler.schedule(context,c.id,c.title,trigger)
+                                }
+                                if(c.saleTime>System.currentTimeMillis()) {
                                     AlarmScheduler.schedule(context,c.id,c.title,c.saleTime,true)
-                                    persist(concerts,"已安排提前10分钟及开售时提醒："+c.title)
-                                } else persist(concerts,"开售前10分钟的提醒时间已过："+c.title)
+                                    persist(concerts,if(trigger>System.currentTimeMillis()) "已安排提前10分钟及开售时提醒："+c.title else "已安排开售时提醒："+c.title)
+                                } else persist(concerts,"开售时间已过，未安排提醒："+c.title)
                             }) { Text("重设提醒") }
                             TextButton(onClick={
                                 AlarmScheduler.cancel(context,c.id)
@@ -224,10 +226,12 @@ fun ConcertApp() {
                 val trigger=saleTime-10*60*1000L
                 if(trigger>System.currentTimeMillis()) {
                     AlarmScheduler.schedule(context,id,item.title,trigger)
+                }
+                if(item.saleTime>System.currentTimeMillis()) {
                     AlarmScheduler.schedule(context,id,item.title,item.saleTime,true)
-                    persist(updated,"已添加并安排提前10分钟及开售时提醒："+item.title)
+                    persist(updated,if(trigger>System.currentTimeMillis()) "已添加并安排提前10分钟及开售时提醒："+item.title else "已添加并安排开售时提醒："+item.title)
                 } else {
-                    persist(updated,"已添加演出；开售前10分钟提醒时间已过："+item.title)
+                    persist(updated,"已添加演出；开售时间已过，未安排提醒："+item.title)
                 }
                 title="";url="";showAdd=false
             } else {
