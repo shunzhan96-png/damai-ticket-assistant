@@ -302,6 +302,8 @@ fun ConcertApp() {
                         }
                     }
                     Divider()
+                    val monitorStatus = prefs.getString("page_monitor_status", "尚未启用页面状态识别服务") ?: "尚未启用页面状态识别服务"
+                    Text("当前识别状态：$monitorStatus", style = MaterialTheme.typography.bodySmall)
                     Text("页面检查频率", style = MaterialTheme.typography.titleSmall)
                     Text("每隔 ${checkIntervalSeconds} 秒检查一次当前大麦页面状态（需手动开启无障碍服务）。", style = MaterialTheme.typography.bodyMedium)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -345,6 +347,7 @@ fun ConcertApp() {
                         modifier = Modifier.fillMaxWidth(),
                         onClick = {
                             try {
+                                prefs.edit().putInt("active_event_id", target.id).apply()
                                 if (target.url.isNotBlank()) {
                                     openConcertLink(context, target.url)
                                     persist(concerts, "已快速尝试进入目标演出入口：" + target.title + "。请确认页面确实对应目标演出。")
