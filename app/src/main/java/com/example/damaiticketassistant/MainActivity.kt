@@ -356,20 +356,38 @@ fun ConcertApp() {
                         modifier = Modifier.fillMaxWidth(),
                         onClick = {
                             try {
-                                prefs.edit().putInt("active_event_id", target.id).putString("active_event_title", target.title).apply()
+                                prefs.edit()
+                                    .putInt("active_event_id", target.id)
+                                    .putString("active_event_title", target.title)
+                                    .putInt("check_interval_${target.id}", checkIntervalSeconds)
+                                    .putBoolean("monitor_enabled", true)
+                                    .putString("page_monitor_status", "辅助任务已启动；等待读取大麦页面")
+                                    .apply()
                                 if (target.url.isNotBlank()) {
                                     openConcertLink(context, target.url)
-                                    persist(concerts, "已快速尝试进入目标演出入口：" + target.title + "。请确认页面确实对应目标演出。")
+                                    persist(concerts, "已启动辅助任务并尝试打开演出链接：" + target.title)
                                 } else {
                                     openDamaiApp(context)
-                                    persist(concerts, "该演出没有保存链接，已启动大麦App；请搜索目标演出：" + target.title)
+                                    persist(concerts, "已启动辅助任务并打开大麦App；请手动进入目标演出：" + target.title)
                                 }
                                 quickPrepConcert = null
                             } catch (_: Exception) {
-                                persist(concerts, "快速进入失败，请使用下方“启动大麦App”并手动搜索：" + target.title)
+                                prefs.edit().putBoolean("monitor_enabled", false).apply()
+                                persist(concerts, "辅助任务启动失败：链接无法打开，请检查链接或手动进入大麦：" + target.title)
                             }
                         }
-                    ) { Text("快速进入目标演出") }
+                    ) { Text("开始辅助任务并进入演出") }
+                    OutlinedButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            prefs.edit()
+                                .putBoolean("monitor_enabled", false)
+                                .putString("page_monitor_status", "辅助任务已停止")
+                                .putLong("page_monitor_updated_at", System.currentTimeMillis())
+                                .apply()
+                            persist(concerts, "已手动停止辅助任务：" + target.title)
+                        }
+                    ) { Text("停止辅助任务") }
                     OutlinedButton(
                         modifier = Modifier.fillMaxWidth(),
                         onClick = {
