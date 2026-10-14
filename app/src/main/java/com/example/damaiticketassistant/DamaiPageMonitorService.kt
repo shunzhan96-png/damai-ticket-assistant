@@ -53,9 +53,18 @@ class DamaiPageMonitorService : AccessibilityService() {
     }
 
     private fun inspectCurrentWindow() {
-        val root = rootInActiveWindow ?: return
+        val root = rootInActiveWindow
+        if (root == null) {
+            saveStatusIfChanged("等待大麦窗口；请先打开大麦App并保持在前台")
+            return
+        }
         if (root.packageName?.toString() != DAMAI_PACKAGE) {
+            val currentPackage = root.packageName?.toString().orEmpty()
             root.recycle()
+            saveStatusIfChanged(
+                if (currentPackage.isBlank()) "当前没有可读取的活动窗口"
+                else "当前前台不是大麦页面（$currentPackage）；请打开目标演出页面"
+            )
             return
         }
         val text = StringBuilder()
@@ -87,9 +96,13 @@ class DamaiPageMonitorService : AccessibilityService() {
                 "检测到购票相关控件；当前版本仅识别，不会自动提交订单"
             else -> "已读取大麦当前页面；尚未匹配到明确状态"
         }
-        if (state != lastState) {
-            lastState = state
-            saveStatus(state)
+        saveStatusIfChanged(state)
+    }
+
+    private fun saveStatusIfChanged(status: String) {
+        if (status != lastState) {
+            lastState = status
+            saveStatus(status)
         }
     }
 
