@@ -19,13 +19,18 @@ class DamaiPageMonitorService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
-        saveStatusIfChanged("页面识别服务已启用；等待大麦页面变化")
-        scheduleInspection()
-        schedulePeriodicInspection()
+        val enabled = getSharedPreferences("damai_assistant", MODE_PRIVATE)
+            .getBoolean("monitor_enabled", false)
+        saveStatusIfChanged(if (enabled) "辅助任务已启用；等待大麦页面变化" else "页面识别服务已连接；辅助任务尚未启动")
+        if (enabled) {
+            scheduleInspection()
+            schedulePeriodicInspection()
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
+        if (!getSharedPreferences("damai_assistant", MODE_PRIVATE).getBoolean("monitor_enabled", false)) return
         if (event.packageName?.toString() != DAMAI_PACKAGE) return
 
         // Coalesce bursts of content events. Inspect once after the UI settles.
@@ -64,6 +69,11 @@ class DamaiPageMonitorService : AccessibilityService() {
         periodicInspection?.let(handler::removeCallbacks)
         val task = Runnable {
             periodicInspection = null
+            if (!getSharedPreferences("damai_assistant", MODE_PRIVATE)
+                    .getBoolean("monitor_enabled", false)) {
+                saveStatusIfChanged("辅助任务已停止；页面识别暂不执行")
+                return@Runnable
+            }
             val root = rootInActiveWindow
             val isDamaiVisible = root?.packageName?.toString() == DAMAI_PACKAGE
             root?.recycle()
@@ -175,6 +185,6 @@ class DamaiPageMonitorService : AccessibilityService() {
         private const val MAX_CHECK_INTERVAL_SECONDS = 5
         private const val MAX_NODES = 100
         private const val MAX_DEPTH = 12
-        private const val MAX_TEXT_CHARS = 4000
+        private const val MAX_TEXT_CHARS = 3000
     }
 }
