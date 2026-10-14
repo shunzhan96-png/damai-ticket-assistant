@@ -63,6 +63,7 @@ fun ConcertApp() {
         mutableStateOf(prefs.getString("page_monitor_status", "尚未启用页面状态识别服务") ?: "尚未启用页面状态识别服务")
     }
     var pageMonitorUpdatedAt by remember { mutableLongStateOf(prefs.getLong("page_monitor_updated_at", 0L)) }
+    var monitorEnabled by remember { mutableStateOf(prefs.getBoolean("monitor_enabled", false)) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
     LaunchedEffect(Unit) {
@@ -71,6 +72,7 @@ fun ConcertApp() {
             pageMonitorStatus = prefs.getString("page_monitor_status", "尚未启用页面状态识别服务")
                 ?: "尚未启用页面状态识别服务"
             pageMonitorUpdatedAt = prefs.getLong("page_monitor_updated_at", 0L)
+            monitorEnabled = prefs.getBoolean("monitor_enabled", false)
             kotlinx.coroutines.delay(1000)
         }
     }
@@ -170,6 +172,19 @@ fun ConcertApp() {
             else "最近检查：暂无记录",
             style = MaterialTheme.typography.labelSmall
         )
+        if (monitorEnabled) {
+            OutlinedButton(
+                onClick = {
+                    prefs.edit()
+                        .putBoolean("monitor_enabled", false)
+                        .putString("page_monitor_status", "辅助任务已停止")
+                        .putLong("page_monitor_updated_at", System.currentTimeMillis())
+                        .apply()
+                    persist(concerts, "已手动停止辅助任务")
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("停止当前辅助任务") }
+        }
         Spacer(Modifier.height(6.dp))
         Text("最近操作", style=MaterialTheme.typography.titleMedium)
         Text(log, style=MaterialTheme.typography.bodySmall)
