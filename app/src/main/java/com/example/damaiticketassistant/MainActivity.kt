@@ -427,11 +427,32 @@ fun openConcertLink(context: Context, link: String) {
     }
 
     val flags = Intent.FLAG_ACTIVITY_NEW_TASK
-    // Do not force cn.damai here. Forcing a package can send generic/unrecognized URLs
-    // to the app's launcher/home screen instead of allowing Android App Links to resolve
-    // the exact event route. Let Android choose the verified handler first.
-    val viewIntent = Intent(Intent.ACTION_VIEW, uri).addFlags(flags)
-    context.startActivity(viewIntent)
+    val itemId = when {
+        uri.host.equals("m.damai.cn", ignoreCase = true) &&
+            uri.path.equals("/shows/item.html", ignoreCase = true) ->
+            uri.getQueryParameter("itemId")
+        uri.host.equals("detail.damai.cn", ignoreCase = true) &&
+            uri.path.equals("/item.htm", ignoreCase = true) ->
+            uri.getQueryParameter("id")
+        else -> null
+    }?.takeIf { it.matches(Regex("[0-9]{6,24}")) }
+
+    // Damai has used more than one public event URL format. Try the legacy detail URL
+    // with the same item ID first; if the installed app does not expose this route,
+    // fall back to the exact URL supplied by the user. Neither route can guarantee
+    // in-app navigation because the Damai app controls its own deep-link handling.
+    val candidate = if (itemId != null && uri.host.equals("m.damai.cn", ignoreCase = true)) {
+        Uri.parse("https://detail.damai.cn/item.htm?id=$itemId")
+    } else uri
+
+    val damaiIntent = Intent(Intent.ACTION_VIEW, candidate)
+        .setPackage("cn.damai")
+        .addFlags(flags)
+    try {
+        context.startActivity(damaiIntent)
+    } catch (_: android.content.ActivityNotFoundException) {
+        context.startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(flags))
+    }
 }
 
 suspend fun fetchPageInfo(link: String): PageInfo? = withContext(Dispatchers.IO) {
