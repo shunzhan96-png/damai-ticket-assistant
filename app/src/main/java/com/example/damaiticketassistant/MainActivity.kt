@@ -262,6 +262,9 @@ fun ConcertApp() {
                     ?.mapNotNull { it.toIntOrNull() }?.toSet() ?: emptySet()
             )
         }
+        var checkIntervalSeconds by remember(target.id) {
+            mutableIntStateOf(prefs.getInt("check_interval_${target.id}", 2).coerceIn(1, 5))
+        }
         val checklist = listOf(
             "已确认演出名称和官方链接",
             "已在大麦本人账号登录",
@@ -298,7 +301,39 @@ fun ConcertApp() {
                             Text(item, modifier = Modifier.padding(top = 12.dp))
                         }
                     }
-                    Text("助手负责准备、提醒和打开官方入口。登录验证、选购确认及支付由你本人完成。", style = MaterialTheme.typography.bodySmall)
+                    Divider()
+                    Text("页面检查频率", style = MaterialTheme.typography.titleSmall)
+                    Text("每隔 ${checkIntervalSeconds} 秒检查一次当前大麦页面状态（需手动开启无障碍服务）。", style = MaterialTheme.typography.bodyMedium)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            enabled = checkIntervalSeconds > 1,
+                            onClick = {
+                                checkIntervalSeconds = (checkIntervalSeconds - 1).coerceIn(1, 5)
+                                prefs.edit().putInt("check_interval_${target.id}", checkIntervalSeconds).apply()
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) { Text("更快 −") }
+                        OutlinedButton(
+                            enabled = checkIntervalSeconds < 5,
+                            onClick = {
+                                checkIntervalSeconds = (checkIntervalSeconds + 1).coerceIn(1, 5)
+                                prefs.edit().putInt("check_interval_${target.id}", checkIntervalSeconds).apply()
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) { Text("更慢 +") }
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            try {
+                                context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                                persist(concerts, "已打开系统无障碍设置；请自行确认并启用大麦页面状态识别服务。")
+                            } catch (_: Exception) {
+                                persist(concerts, "无法打开无障碍设置，请到系统设置中手动搜索“无障碍”。")
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("设置页面状态识别权限") }
+                    Text("当前阶段只识别页面状态并记录结果，不会自动点击下单或绕过排队、验证码；这些环节由你本人处理。", style = MaterialTheme.typography.bodySmall)
                 }
             },
             confirmButton = {
