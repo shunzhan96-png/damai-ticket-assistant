@@ -279,6 +279,13 @@ fun ConcertApp() {
                 ) {
                     Text(target.title, style = MaterialTheme.typography.titleMedium)
                     Text("开售时间：" + SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(target.saleTime)))
+                    val standbyRemaining = target.saleTime - now
+                    Text(
+                        if (standbyRemaining > 0L) "开售倒计时：${formatDuration(standbyRemaining)}"
+                        else "已到预定开售时间，请以大麦页面状态为准",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
                     checklist.forEachIndexed { index, item ->
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Checkbox(checked = index in checked, onCheckedChange = { yes ->
@@ -295,27 +302,53 @@ fun ConcertApp() {
                 }
             },
             confirmButton = {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = {
-                        try {
-                            if (target.url.isBlank()) {
-                                persist(concerts, "该演出还没有保存链接，请先编辑演出信息或在大麦内搜索：" + target.title)
-                            } else {
-                                openConcertLink(context, target.url)
-                                persist(concerts, "已尝试打开官方演出链接：" + target.title + "。若进入浏览器或出现渠道限制，请返回并点击“启动大麦App”。")
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            try {
+                                if (target.url.isNotBlank()) {
+                                    openConcertLink(context, target.url)
+                                    persist(concerts, "已快速尝试进入目标演出入口：" + target.title + "。请确认页面确实对应目标演出。")
+                                } else {
+                                    openDamaiApp(context)
+                                    persist(concerts, "该演出没有保存链接，已启动大麦App；请搜索目标演出：" + target.title)
+                                }
+                                quickPrepConcert = null
+                            } catch (_: Exception) {
+                                persist(concerts, "快速进入失败，请使用下方“启动大麦App”并手动搜索：" + target.title)
                             }
-                        } catch (_: Exception) {
-                            persist(concerts, "演出链接无法直接打开，请点击“启动大麦App”后在大麦内搜索：" + target.title)
                         }
-                    }) { Text("打开演出链接") }
-                    OutlinedButton(onClick = {
-                        try {
-                            openDamaiApp(context)
-                            persist(concerts, "已请求启动大麦App，请在大麦内搜索并确认演出：" + target.title)
-                        } catch (_: Exception) {
-                            persist(concerts, "无法启动大麦App：请确认已安装大麦App")
+                    ) { Text("快速进入目标演出") }
+                    OutlinedButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            try {
+                                if (target.url.isNotBlank()) {
+                                    openConcertLink(context, target.url)
+                                    persist(concerts, "已尝试打开演出链接：" + target.title + "。请核对是否进入正确详情页。")
+                                } else {
+                                    persist(concerts, "该演出还没有保存链接，请在大麦内搜索：" + target.title)
+                                }
+                            } catch (_: Exception) {
+                                persist(concerts, "演出链接无法打开，请启动大麦App后手动搜索：" + target.title)
+                            }
                         }
-                    }) { Text("启动大麦App") }
+                    ) { Text("再次尝试演出链接") }
+                    OutlinedButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            try {
+                                openDamaiApp(context)
+                                persist(concerts, "已请求启动大麦App，请确认目标演出：" + target.title)
+                            } catch (_: Exception) {
+                                persist(concerts, "无法启动大麦App：请确认已安装大麦App")
+                            }
+                        }
+                    ) { Text("仅启动大麦App") }
                 }
             },
             dismissButton = { TextButton(onClick = { quickPrepConcert = null }) { Text("关闭") } }
