@@ -492,18 +492,23 @@ fun openConcertLink(context: Context, link: String): String {
         throw IllegalArgumentException("链接格式无效：请粘贴完整的 http/https 活动链接")
     }
 
-    // Keep the original URL and let Android resolve its public app-link handler.
-    // Record the selected handler so a home-page fallback can be diagnosed rather than
-    // silently reporting that the target event page opened successfully.
-    val intent = Intent(Intent.ACTION_VIEW, uri)
+    // First ask Damai itself to handle the exact original URL. Only do this when
+    // Android confirms that the installed Damai app has a matching URL handler; never
+    // fall back to its launcher intent, which would open the home page.
+    val damaiIntent = Intent(Intent.ACTION_VIEW, uri)
+        .setPackage("cn.damai")
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    val damaiHandler = damaiIntent.resolveActivity(context.packageManager)
+    val intent = if (damaiHandler != null) damaiIntent else {
+        Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
     val resolvedPackage = intent.resolveActivity(context.packageManager)?.packageName
     try {
         context.startActivity(intent)
-        return when (resolvedPackage) {
-            "cn.damai" -> "链接已交给大麦App处理（仍需确认是否到达目标详情页）"
-            null -> "已交给Android链接解析；系统未能预先报告处理应用"
-            else -> "Android选择的链接处理应用为 $resolvedPackage（可能不是大麦）"
+        return when {
+            damaiHandler != null -> "已将原始链接直接交给大麦App的匹配页面处理；仍需核对目标演出标题"
+            resolvedPackage == null -> "已交给Android链接解析；系统未能预先报告处理应用"
+            else -> "大麦未声明匹配此链接的处理页面；Android选择了 $resolvedPackage"
         }
     } catch (_: android.content.ActivityNotFoundException) {
         throw android.content.ActivityNotFoundException(
