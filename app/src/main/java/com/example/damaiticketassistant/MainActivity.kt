@@ -126,7 +126,8 @@ fun ConcertApp() {
                                 val trigger=c.saleTime-10*60*1000L
                                 if(trigger>System.currentTimeMillis()) {
                                     AlarmScheduler.schedule(context,c.id,c.title,trigger)
-                                    persist(concerts,"已安排开售前10分钟提醒："+c.title)
+                                    AlarmScheduler.schedule(context,c.id,c.title,c.saleTime,true)
+                                    persist(concerts,"已安排提前10分钟及开售时提醒："+c.title)
                                 } else persist(concerts,"开售前10分钟的提醒时间已过："+c.title)
                             }) { Text("重设提醒") }
                             TextButton(onClick={
@@ -223,7 +224,8 @@ fun ConcertApp() {
                 val trigger=saleTime-10*60*1000L
                 if(trigger>System.currentTimeMillis()) {
                     AlarmScheduler.schedule(context,id,item.title,trigger)
-                    persist(updated,"已添加并安排开售前10分钟提醒："+item.title)
+                    AlarmScheduler.schedule(context,id,item.title,item.saleTime,true)
+                    persist(updated,"已添加并安排提前10分钟及开售时提醒："+item.title)
                 } else {
                     persist(updated,"已添加演出；开售前10分钟提醒时间已过："+item.title)
                 }
@@ -234,6 +236,56 @@ fun ConcertApp() {
         }) { Text("保存并设提醒") }},
         dismissButton={TextButton(onClick={showAdd=false}){Text("取消")}}
     )
+
+    if (quickPrepConcert != null) {
+        val target = quickPrepConcert!!
+        var checked by remember(target.id) { mutableStateOf(setOf<Int>()) }
+        val checklist = listOf(
+            "已确认演出名称和官方链接",
+            "已在大麦本人账号登录",
+            "已核对场次、票档、数量和预算",
+            "已确认实名观演人",
+            "已准备好本人支付方式"
+        )
+        AlertDialog(
+            onDismissRequest = { quickPrepConcert = null },
+            title = { Text("开售前快速准备") },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(target.title, style = MaterialTheme.typography.titleMedium)
+                    Text("开售时间：" + SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(target.saleTime)))
+                    checklist.forEachIndexed { index, item ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Checkbox(checked = index in checked, onCheckedChange = { yes ->
+                                checked = if (yes) checked + index else checked - index
+                            })
+                            Text(item, modifier = Modifier.padding(top = 12.dp))
+                        }
+                    }
+                    Text("助手负责准备、提醒和打开官方入口。登录验证、选购确认及支付由你本人完成。", style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (target.url.startsWith("https://") || target.url.startsWith("http://")) {
+                        try {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(target.url)))
+                            persist(concerts, "已从购票准备清单打开官方入口：" + target.title)
+                        } catch (_: Exception) {
+                            persist(concerts, "官方入口打开失败，请检查链接：" + target.title)
+                        }
+                    } else {
+                        persist(concerts, "该演出尚未填写有效购票链接：" + target.title)
+                    }
+                    quickPrepConcert = null
+                }) { Text("打开官方购票入口") }
+            },
+            dismissButton = { TextButton(onClick = { quickPrepConcert = null }) { Text("稍后再说") } }
+        )
+    }
 }
 
 suspend fun fetchPageInfo(link: String): PageInfo? = withContext(Dispatchers.IO) {
