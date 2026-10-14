@@ -13,6 +13,7 @@ class ReminderReceiver : BroadcastReceiver() {
         val title = intent.getStringExtra("title") ?: "演出即将开售"
         val eventId = intent.getIntExtra("eventId", 0)
         val atSaleTime = intent.getBooleanExtra("atSaleTime", false)
+        val atSaleTime = intent.getBooleanExtra("atSaleTime", false)
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= 26) {
             nm.createNotificationChannel(NotificationChannel("sale_reminders", "开售提醒", NotificationManager.IMPORTANCE_HIGH))
