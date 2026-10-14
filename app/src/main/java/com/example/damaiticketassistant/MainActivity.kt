@@ -116,12 +116,12 @@ fun ConcertApp() {
                         Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                             Button(onClick={
                                 try {
-                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(c.url)))
+                                    context.startActivity(buildDamaiIntent(context, c.url))
                                     persist(concerts,"已打开官方页面："+c.title)
                                 } catch (_:Exception) {
                                     persist(concerts,"打开失败：请检查购票链接")
                                 }
-                            }, enabled=c.url.startsWith("https://") || c.url.startsWith("http://")) { Text("官方购票") }
+                            }, enabled=c.url.startsWith("https://") || c.url.startsWith("http://")) { Text("优先打开大麦App") }
                             OutlinedButton(onClick={
                                 val trigger=c.saleTime-10*60*1000L
                                 if(trigger>System.currentTimeMillis()) {
@@ -276,7 +276,7 @@ fun ConcertApp() {
                 TextButton(onClick = {
                     if (target.url.startsWith("https://") || target.url.startsWith("http://")) {
                         try {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(target.url)))
+                            context.startActivity(buildDamaiIntent(context, target.url))
                             persist(concerts, "已从购票准备清单打开官方入口：" + target.title)
                         } catch (_: Exception) {
                             persist(concerts, "官方入口打开失败，请检查链接：" + target.title)
@@ -289,6 +289,16 @@ fun ConcertApp() {
             },
             dismissButton = { TextButton(onClick = { quickPrepConcert = null }) { Text("稍后再说") } }
         )
+    }
+}
+
+fun buildDamaiIntent(context: Context, link: String): Intent {
+    val uri = Uri.parse(link)
+    val appIntent = Intent(Intent.ACTION_VIEW, uri).setPackage("cn.damai")
+    return if (appIntent.resolveActivity(context.packageManager) != null) {
+        appIntent
+    } else {
+        Intent(Intent.ACTION_VIEW, uri)
     }
 }
 
