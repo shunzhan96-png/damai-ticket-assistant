@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="damai_page_monitor_description">仅读取大麦当前可见页面文字并提示页面状态，不自动点击、不处理验证码、不绕过排队、不提交订单或支付。</string>
+</resources>
