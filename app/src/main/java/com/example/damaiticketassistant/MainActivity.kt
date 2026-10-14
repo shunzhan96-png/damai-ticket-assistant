@@ -59,11 +59,16 @@ fun ConcertApp() {
     var recognizing by remember { mutableStateOf(false) }
     var recognitionMessage by remember { mutableStateOf("可粘贴大麦活动链接尝试识别名称；开售时间请核对后手动选择。") }
     var log by remember { mutableStateOf(prefs.getString("log_last", "暂无操作记录") ?: "暂无操作记录") }
+    var pageMonitorStatus by remember {
+        mutableStateOf(prefs.getString("page_monitor_status", "尚未启用页面状态识别服务") ?: "尚未启用页面状态识别服务")
+    }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
     LaunchedEffect(Unit) {
         while (true) {
             now = System.currentTimeMillis()
+            pageMonitorStatus = prefs.getString("page_monitor_status", "尚未启用页面状态识别服务")
+                ?: "尚未启用页面状态识别服务"
             kotlinx.coroutines.delay(1000)
         }
     }
@@ -156,6 +161,9 @@ fun ConcertApp() {
             }
         }
         Divider()
+        Text("页面识别状态", style=MaterialTheme.typography.titleMedium)
+        Text(pageMonitorStatus, style=MaterialTheme.typography.bodySmall)
+        Spacer(Modifier.height(6.dp))
         Text("最近操作", style=MaterialTheme.typography.titleMedium)
         Text(log, style=MaterialTheme.typography.bodySmall)
     }
