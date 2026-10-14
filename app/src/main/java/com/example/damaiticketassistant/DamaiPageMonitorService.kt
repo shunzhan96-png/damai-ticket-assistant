@@ -14,11 +14,14 @@ class DamaiPageMonitorService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
     private var lastState: String = ""
     private var pendingInspection: Runnable? = null
+    private var periodicInspection: Runnable? = null
+    private var lastInspectionAt = 0L
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         saveStatusIfChanged("页面识别服务已启用；等待大麦页面变化")
         scheduleInspection()
+        schedulePeriodicInspection()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -36,20 +39,50 @@ class DamaiPageMonitorService : AccessibilityService() {
     override fun onDestroy() {
         pendingInspection?.let(handler::removeCallbacks)
         pendingInspection = null
+        periodicInspection?.let(handler::removeCallbacks)
+        periodicInspection = null
         super.onDestroy()
     }
 
     private fun scheduleInspection() {
         pendingInspection?.let(handler::removeCallbacks)
+        val prefs = getSharedPreferences("damai_assistant", MODE_PRIVATE)
+        val eventId = prefs.getInt("active_event_id", -1)
+        val intervalSeconds = prefs.getInt("check_interval_$eventId", DEFAULT_CHECK_INTERVAL_SECONDS)
+            .coerceIn(MIN_CHECK_INTERVAL_SECONDS, MAX_CHECK_INTERVAL_SECONDS)
+        val elapsed = System.currentTimeMillis() - lastInspectionAt
+        val delay = maxOf(INSPECTION_DEBOUNCE_MS, intervalSeconds * 1000L - elapsed)
         val task = Runnable {
             pendingInspection = null
             inspectCurrentWindow()
         }
         pendingInspection = task
-        handler.postDelayed(task, INSPECTION_DEBOUNCE_MS)
+        handler.postDelayed(task, delay)
+    }
+
+    private fun schedulePeriodicInspection() {
+        periodicInspection?.let(handler::removeCallbacks)
+        val task = Runnable {
+            periodicInspection = null
+            val root = rootInActiveWindow
+            val isDamaiVisible = root?.packageName?.toString() == DAMAI_PACKAGE
+            root?.recycle()
+            if (isDamaiVisible) scheduleInspection()
+            schedulePeriodicInspection()
+        }
+        periodicInspection = task
+        val prefs = getSharedPreferences("damai_assistant", MODE_PRIVATE)
+        val eventId = prefs.getInt("active_event_id", -1)
+        val intervalSeconds = prefs.getInt("check_interval_$eventId", DEFAULT_CHECK_INTERVAL_SECONDS)
+            .coerceIn(MIN_CHECK_INTERVAL_SECONDS, MAX_CHECK_INTERVAL_SECONDS)
+        handler.postDelayed(task, intervalSeconds * 1000L)
     }
 
     private fun inspectCurrentWindow() {
+        lastInspectionAt = System.currentTimeMillis()
+        getSharedPreferences("damai_assistant", MODE_PRIVATE).edit()
+            .putLong("page_monitor_updated_at", lastInspectionAt)
+            .apply()
         val root = rootInActiveWindow
         if (root == null) {
             saveStatusIfChanged("等待大麦窗口；请先打开大麦App并保持在前台")
@@ -105,7 +138,6 @@ class DamaiPageMonitorService : AccessibilityService() {
             lastState = status
             getSharedPreferences("damai_assistant", MODE_PRIVATE).edit()
                 .putString("page_monitor_status", status)
-                .putLong("page_monitor_updated_at", System.currentTimeMillis())
                 .apply()
         }
     }
@@ -138,7 +170,10 @@ class DamaiPageMonitorService : AccessibilityService() {
     companion object {
         private const val DAMAI_PACKAGE = "cn.damai"
         private const val INSPECTION_DEBOUNCE_MS = 450L
-        private const val MAX_NODES = 160
+        private const val DEFAULT_CHECK_INTERVAL_SECONDS = 2
+        private const val MIN_CHECK_INTERVAL_SECONDS = 1
+        private const val MAX_CHECK_INTERVAL_SECONDS = 5
+        private const val MAX_NODES = 100
         private const val MAX_DEPTH = 12
         private const val MAX_TEXT_CHARS = 4000
     }
