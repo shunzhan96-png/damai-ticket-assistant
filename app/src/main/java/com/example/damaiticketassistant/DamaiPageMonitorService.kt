@@ -7,49 +7,46 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 
 /**
- * Read-only monitor for the visible Damai UI.
- * It deliberately does not click controls, submit orders, or interact with captcha/queue/payment.
+ * Lightweight, read-only monitor for the visible Damai UI.
+ * Event-driven: no periodic full-window polling, no clicks, no order submission.
  */
 class DamaiPageMonitorService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
     private var lastState: String = ""
-    private var monitorRunnable: Runnable? = null
+    private var pendingInspection: Runnable? = null
 
     override fun onServiceConnected() {
         super.onServiceConnected()
-        scheduleMonitor()
-        saveStatus("页面识别服务已启用；等待大麦页面显示")
+        saveStatusIfChanged("页面识别服务已启用；等待大麦页面变化")
+        scheduleInspection()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event?.packageName?.toString() == DAMAI_PACKAGE) {
-            inspectCurrentWindow()
-        }
+        if (event == null) return
+        if (event.packageName?.toString() != DAMAI_PACKAGE) return
+
+        // Coalesce bursts of content events. Inspect once after the UI settles.
+        scheduleInspection()
     }
 
     override fun onInterrupt() {
-        saveStatus("页面识别服务被系统中断")
+        saveStatusIfChanged("页面识别服务被系统中断")
     }
 
     override fun onDestroy() {
-        monitorRunnable?.let(handler::removeCallbacks)
-        monitorRunnable = null
+        pendingInspection?.let(handler::removeCallbacks)
+        pendingInspection = null
         super.onDestroy()
     }
 
-    private fun scheduleMonitor() {
-        monitorRunnable?.let(handler::removeCallbacks)
-        val task = object : Runnable {
-            override fun run() {
-                inspectCurrentWindow()
-                val prefs = getSharedPreferences("damai_assistant", MODE_PRIVATE)
-                val eventId = prefs.getInt("active_event_id", -1)
-                val seconds = if (eventId > 0) prefs.getInt("check_interval_$eventId", 2) else 2
-                handler.postDelayed(this, seconds.coerceIn(1, 5) * 1000L)
-            }
+    private fun scheduleInspection() {
+        pendingInspection?.let(handler::removeCallbacks)
+        val task = Runnable {
+            pendingInspection = null
+            inspectCurrentWindow()
         }
-        monitorRunnable = task
-        handler.post(task)
+        pendingInspection = task
+        handler.postDelayed(task, INSPECTION_DEBOUNCE_MS)
     }
 
     private fun inspectCurrentWindow() {
@@ -67,11 +64,15 @@ class DamaiPageMonitorService : AccessibilityService() {
             )
             return
         }
+
         val text = StringBuilder()
         collectVisibleText(root, text, 0, intArrayOf(0))
         root.recycle()
         val pageText = text.toString()
-        if (pageText.isBlank()) return
+        if (pageText.isBlank()) {
+            saveStatusIfChanged("已打开大麦页面，但当前页面没有可读取的文字")
+            return
+        }
 
         val prefs = getSharedPreferences("damai_assistant", MODE_PRIVATE)
         val targetTitle = prefs.getString("active_event_title", "").orEmpty().trim()
@@ -102,21 +103,29 @@ class DamaiPageMonitorService : AccessibilityService() {
     private fun saveStatusIfChanged(status: String) {
         if (status != lastState) {
             lastState = status
-            saveStatus(status)
+            getSharedPreferences("damai_assistant", MODE_PRIVATE).edit()
+                .putString("page_monitor_status", status)
+                .putLong("page_monitor_updated_at", System.currentTimeMillis())
+                .apply()
         }
     }
 
-    private fun collectVisibleText(node: AccessibilityNodeInfo, output: StringBuilder, depth: Int, count: IntArray) {
-        if (depth > 20 || count[0] >= 500) return
+    private fun collectVisibleText(
+        node: AccessibilityNodeInfo,
+        output: StringBuilder,
+        depth: Int,
+        count: IntArray
+    ) {
+        if (depth > MAX_DEPTH || count[0] >= MAX_NODES || output.length >= MAX_TEXT_CHARS) return
         count[0]++
         node.text?.toString()?.takeIf { it.isNotBlank() }?.let {
-            if (output.length < 12000) output.append(it).append(' ')
+            if (output.length < MAX_TEXT_CHARS) output.append(it).append(' ')
         }
         node.contentDescription?.toString()?.takeIf { it.isNotBlank() }?.let {
-            if (output.length < 12000) output.append(it).append(' ')
+            if (output.length < MAX_TEXT_CHARS) output.append(it).append(' ')
         }
         for (i in 0 until node.childCount) {
-            if (count[0] >= 500 || output.length >= 12000) break
+            if (count[0] >= MAX_NODES || output.length >= MAX_TEXT_CHARS) break
             val child = node.getChild(i) ?: continue
             collectVisibleText(child, output, depth + 1, count)
             child.recycle()
@@ -126,14 +135,11 @@ class DamaiPageMonitorService : AccessibilityService() {
     private fun containsAny(text: String, vararg terms: String): Boolean =
         terms.any { text.contains(it, ignoreCase = true) }
 
-    private fun saveStatus(status: String) {
-        getSharedPreferences("damai_assistant", MODE_PRIVATE).edit()
-            .putString("page_monitor_status", status)
-            .putLong("page_monitor_updated_at", System.currentTimeMillis())
-            .apply()
-    }
-
     companion object {
         private const val DAMAI_PACKAGE = "cn.damai"
+        private const val INSPECTION_DEBOUNCE_MS = 450L
+        private const val MAX_NODES = 160
+        private const val MAX_DEPTH = 12
+        private const val MAX_TEXT_CHARS = 4000
     }
 }
