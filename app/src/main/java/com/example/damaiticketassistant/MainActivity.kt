@@ -34,6 +34,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 data class Concert(val id:Int, val title:String, val artist:String, val city:String, val saleTime:Long, val url:String, val price:String)
+data class PageInfo(val title:String?, val saleTime:Long?)
 
 class MainActivity : ComponentActivity() {
     private val askNotifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -166,12 +167,16 @@ fun ConcertApp() {
                             recognizing = true
                             recognitionMessage = "正在尝试读取活动页面标题……"
                             scope.launch {
-                                val result = withContext(Dispatchers.IO) { fetchPageTitle(url.trim()) }
-                                if (!result.isNullOrBlank()) {
-                                    if (title.isBlank()) title = result
-                                    recognitionMessage = if (title == result) "已识别页面标题，请核对名称和开售时间。" else "已读取页面标题；未覆盖你填写的名称，请核对信息。"
+                                val result = withContext(Dispatchers.IO) { fetchPageInfo(url.trim()) }
+                                if (result != null && (!result.title.isNullOrBlank() || result.saleTime != null)) {
+                                    val foundTitle = result.title?.takeIf { it.isNotBlank() }
+                                    if (title.isBlank() && foundTitle != null) title = foundTitle
+                                    if (result.saleTime != null) saleTime = result.saleTime
+                                    val titleNote = if (foundTitle != null) "已读取页面标题" else "未读取到标题"
+                                    val timeNote = if (result.saleTime != null) "并找到疑似开售时间，请务必核对" else "未找到可确认的开售时间，请手动选择"
+                                    recognitionMessage = "$titleNote；$timeNote。页面数据不保证完整或最新。"
                                 } else {
-                                    recognitionMessage = "暂时无法自动识别（页面可能需要登录或限制访问）。请手动填写名称；链接仍可保存。"
+                                    recognitionMessage = "暂时无法读取活动信息（页面可能需要登录、动态加载或限制访问）。请手动填写名称和开售时间；链接仍可保存。"
                                 }
                                 recognizing = false
                             }
@@ -229,24 +234,68 @@ fun ConcertApp() {
     )
 }
 
-suspend fun fetchPageTitle(link: String): String? = withContext(Dispatchers.IO) {
+suspend fun fetchPageInfo(link: String): PageInfo? = withContext(Dispatchers.IO) {
     var connection: HttpURLConnection? = null
     try {
-        val uri=Uri.parse(link)
-        if (uri.scheme != "https" && uri.scheme != "http") return@withContext null
-        connection=(URL(link).openConnection() as HttpURLConnection).apply {
-            connectTimeout=5000
-            readTimeout=5000
-            requestMethod="GET"
-            setRequestProperty("User-Agent","Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/125.0 Mobile Safari/537.36")
-            instanceFollowRedirects=true
+        val uri = Uri.parse(link)
+        val host = uri.host?.lowercase(Locale.ROOT) ?: return@withContext null
+        val allowed = host == "damai.cn" || host.endsWith(".damai.cn") ||
+            host == "damai.com" || host.endsWith(".damai.com")
+        if (uri.scheme != "https" || !allowed) return@withContext null
+
+        connection = (URL(link).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 6000
+            readTimeout = 6000
+            requestMethod = "GET"
+            setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/125.0 Mobile Safari/537.36")
+            setRequestProperty("Accept", "text/html,application/xhtml+xml")
+            instanceFollowRedirects = true
         }
         if (connection.responseCode !in 200..299) return@withContext null
-        val html=connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText().take(1_000_000) }
-        val meta=Regex("(?is)<meta[^>]+(?:property|name)=[\"']og:title[\"'][^>]+content=[\"']([^\"']+)").find(html)?.groupValues?.getOrNull(1)
-            ?: Regex("(?is)<meta[^>]+content=[\"']([^\"']+)[\"'][^>]+(?:property|name)=[\"']og:title[\"']").find(html)?.groupValues?.getOrNull(1)
-        val raw=meta ?: Regex("(?is)<title[^>]*>(.*?)</title>").find(html)?.groupValues?.getOrNull(1)
-        raw?.replace("&amp;","&")?.replace("&quot;","\"")?.replace("&#39;","'")?.replace("&lt;","<")?.replace("&gt;",">")?.replace(Regex("\\s+")," ")?.trim()?.takeIf { it.isNotBlank() }
+        val finalHost = connection.url.host.lowercase(Locale.ROOT)
+        if (!(finalHost == "damai.cn" || finalHost.endsWith(".damai.cn") ||
+                    finalHost == "damai.com" || finalHost.endsWith(".damai.com"))) return@withContext null
+
+        val html = connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText().take(1_000_000) }
+        fun decodeEntities(value: String): String = value
+            .replace("&amp;", "&").replace("&quot;", "\"").replace("&#39;", "'")
+            .replace("&lt;", "<").replace("&gt;", ">").replace("&nbsp;", " ")
+            .replace(Regex("&#(\\d+);")) { m -> m.groupValues[1].toIntOrNull()?.toChar()?.toString() ?: m.value }
+
+        val meta = Regex("""(?is)<meta[^>]+(?:property|name)=["']og:title["'][^>]+content=["']([^"']+)""").find(html)?.groupValues?.getOrNull(1)
+            ?: Regex("""(?is)<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']og:title["']""").find(html)?.groupValues?.getOrNull(1)
+        val rawTitle = meta ?: Regex("""(?is)<title[^>]*>(.*?)</title>""").find(html)?.groupValues?.getOrNull(1)
+        val title = rawTitle?.let { decodeEntities(it.replace(Regex("<[^>]+>"), " ").replace(Regex("\\s+"), " ")).trim() }
+            ?.takeIf { it.isNotBlank() }
+
+        val plain = decodeEntities(
+            html.replace(Regex("""(?is)<script[^>]*>.*?</script>"""), " ")
+                .replace(Regex("""(?is)<style[^>]*>.*?</style>"""), " ")
+                .replace(Regex("""(?is)<[^>]+>"""), " ")
+        ).replace(Regex("\\s+"), " ")
+        val dateRegex = Regex("""(?<!\d)(20\d{2})[年./-](\d{1,2})[月./-](\d{1,2})日?\s*(?:[日号]\s*)?(\d{1,2}):(\d{2})""")
+        var foundTime: Long? = null
+        for (match in dateRegex.findAll(plain)) {
+            val from = (match.range.first - 90).coerceAtLeast(0)
+            val to = (match.range.last + 50).coerceAtMost(plain.length - 1)
+            val nearby = plain.substring(from, to + 1)
+            if (!Regex("""开售|预售|开票|售票|销售时间""").containsMatchIn(nearby)) continue
+            val values = match.groupValues.drop(1).mapNotNull { it.toIntOrNull() }
+            if (values.size != 5) continue
+            val cal = Calendar.getInstance().apply {
+                isLenient = false
+                set(Calendar.YEAR, values[0]); set(Calendar.MONTH, values[1] - 1)
+                set(Calendar.DAY_OF_MONTH, values[2]); set(Calendar.HOUR_OF_DAY, values[3])
+                set(Calendar.MINUTE, values[4]); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+            }
+            try {
+                foundTime = cal.timeInMillis
+                break
+            } catch (_: Exception) {
+                // Ignore malformed date candidates and keep looking.
+            }
+        }
+        if (title == null && foundTime == null) null else PageInfo(title, foundTime)
     } catch (_: Exception) {
         null
     } finally {
