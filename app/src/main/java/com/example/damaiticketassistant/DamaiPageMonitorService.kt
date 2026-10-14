@@ -22,10 +22,10 @@ class DamaiPageMonitorService : AccessibilityService() {
         val enabled = getSharedPreferences("damai_assistant", MODE_PRIVATE)
             .getBoolean("monitor_enabled", false)
         saveStatusIfChanged(if (enabled) "辅助任务已启用；等待大麦页面变化" else "页面识别服务已连接；辅助任务尚未启动")
-        if (enabled) {
-            scheduleInspection()
-            schedulePeriodicInspection()
-        }
+        if (enabled) scheduleInspection()
+        // Lightweight preference heartbeat lets the app's Start button activate monitoring
+        // even when the accessibility service was already connected before the task started.
+        schedulePeriodicInspection()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -72,9 +72,11 @@ class DamaiPageMonitorService : AccessibilityService() {
         periodicInspection?.let(handler::removeCallbacks)
         val task = Runnable {
             periodicInspection = null
-            if (!getSharedPreferences("damai_assistant", MODE_PRIVATE)
-                    .getBoolean("monitor_enabled", false)) {
-                saveStatusIfChanged("辅助任务已停止；页面识别暂不执行")
+            val enabled = getSharedPreferences("damai_assistant", MODE_PRIVATE)
+                .getBoolean("monitor_enabled", false)
+            if (!enabled) {
+                saveStatusIfChanged("页面识别服务已连接；辅助任务尚未启动")
+                schedulePeriodicInspection()
                 return@Runnable
             }
             val root = rootInActiveWindow
