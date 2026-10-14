@@ -64,6 +64,10 @@ class DamaiPageMonitorService : AccessibilityService() {
         val pageText = text.toString()
         if (pageText.isBlank()) return
 
+        val prefs = getSharedPreferences("damai_assistant", MODE_PRIVATE)
+        val targetTitle = prefs.getString("active_event_title", "").orEmpty().trim()
+        val titleMatched = targetTitle.isNotBlank() && pageText.contains(targetTitle, ignoreCase = true)
+
         val state = when {
             containsAny(pageText, "验证码", "安全验证", "滑动验证", "人机验证") ->
                 "检测到验证码/安全验证，请本人完成；自动操作已保持停止"
@@ -73,6 +77,12 @@ class DamaiPageMonitorService : AccessibilityService() {
                 "检测到支付相关页面，请本人核对订单并完成支付"
             containsAny(pageText, "登录", "手机号登录", "验证码登录", "立即登录") ->
                 "检测到登录相关页面，请本人登录"
+            titleMatched && containsAny(pageText, "选座", "选择票档", "立即购买", "立即预订", "开售提醒", "缺货登记") ->
+                "已匹配目标演出名称，且识别到演出操作控件：$targetTitle"
+            titleMatched ->
+                "已在大麦页面文本中匹配到目标演出名称：$targetTitle；请确认场次与票档"
+            targetTitle.isNotBlank() ->
+                "当前大麦页面未匹配目标演出名称“$targetTitle”；可能仍在首页或其他页面"
             containsAny(pageText, "选座", "选择票档", "立即购买", "确认订单", "提交订单") ->
                 "检测到购票相关控件；当前版本仅识别，不会自动提交订单"
             else -> "已读取大麦当前页面；尚未匹配到明确状态"
