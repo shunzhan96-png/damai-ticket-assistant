@@ -133,8 +133,8 @@ fun ConcertApp() {
                                 onClick={
                                     try {
                                         prefs.edit().putInt("active_event_id", c.id).putString("active_event_title", c.title).apply()
-                                        openConcertLink(context, c.url)
-                                        persist(concerts,"已尝试打开演出链接；正在等待页面识别结果："+c.title)
+                                        val routeResult = openConcertLink(context, c.url)
+                                        persist(concerts,"已尝试打开演出链接；"+routeResult+"；目标："+c.title)
                                     } catch (_:Exception) {
                                         persist(concerts,"演出链接无法打开，请检查链接或复制到大麦App："+c.title)
                                     }
@@ -371,8 +371,8 @@ fun ConcertApp() {
                                     .putString("page_monitor_status", "辅助任务已启动；等待读取大麦页面")
                                     .apply()
                                 if (target.url.isNotBlank()) {
-                                    openConcertLink(context, target.url)
-                                    persist(concerts, "已启动辅助任务并尝试打开演出链接：" + target.title)
+                                    val routeResult = openConcertLink(context, target.url)
+                                    persist(concerts, "已启动辅助任务；" + routeResult + "；目标：" + target.title)
                                 } else {
                                     openDamaiApp(context)
                                     persist(concerts, "已启动辅助任务并打开大麦App；请手动进入目标演出：" + target.title)
@@ -401,8 +401,8 @@ fun ConcertApp() {
                             try {
                                 if (target.url.isNotBlank()) {
                                     prefs.edit().putInt("active_event_id", target.id).putString("active_event_title", target.title).apply()
-                                    openConcertLink(context, target.url)
-                                    persist(concerts, "已尝试打开演出链接，正在等待页面识别结果：" + target.title)
+                                    val routeResult = openConcertLink(context, target.url)
+                                    persist(concerts, "已尝试打开演出链接；" + routeResult + "；目标：" + target.title)
                                 } else {
                                     persist(concerts, "该演出还没有保存链接，请在大麦内搜索：" + target.title)
                                 }
@@ -445,22 +445,28 @@ fun openDamaiApp(context: Context) {
  * Damai version exposes a matching URL handler; it does not bypass app routing or channel rules.
  * If Damai has no matching handler, fall back to Android's normal browser/link resolution.
  */
-fun openConcertLink(context: Context, link: String) {
+fun openConcertLink(context: Context, link: String): String {
     val uri = Uri.parse(link.trim())
     if ((uri.scheme != "https" && uri.scheme != "http") || uri.host.isNullOrBlank()) {
-        throw IllegalArgumentException("Invalid event URL")
+        throw IllegalArgumentException("链接格式无效：请粘贴完整的 http/https 活动链接")
     }
 
-    // Pass the user's original event URL to Android's normal resolver. Do not force
-    // the Damai package or rewrite the URL to a legacy route: either can land on home
-    // when the installed Damai version no longer handles that route.
+    // Keep the original URL and let Android resolve its public app-link handler.
+    // Record the selected handler so a home-page fallback can be diagnosed rather than
+    // silently reporting that the target event page opened successfully.
     val intent = Intent(Intent.ACTION_VIEW, uri)
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    val resolvedPackage = intent.resolveActivity(context.packageManager)?.packageName
     try {
         context.startActivity(intent)
+        return when (resolvedPackage) {
+            "cn.damai" -> "链接已交给大麦App处理（仍需确认是否到达目标详情页）"
+            null -> "已交给Android链接解析；系统未能预先报告处理应用"
+            else -> "Android选择的链接处理应用为 $resolvedPackage（可能不是大麦）"
+        }
     } catch (_: android.content.ActivityNotFoundException) {
         throw android.content.ActivityNotFoundException(
-            "No installed app can open this event link: $uri"
+            "没有已安装的应用能够打开该链接：$uri"
         )
     }
 }
