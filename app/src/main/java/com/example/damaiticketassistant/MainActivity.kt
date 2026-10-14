@@ -335,16 +335,27 @@ fun openDamaiApp(context: Context) {
 }
 
 /**
- * Open the saved HTTPS/HTTP event URL using Android's normal link resolution.
- * Android/Damai decide whether the URL can be handed to the app; otherwise a browser may open.
+ * Try handing the exact saved event URL to Damai first. This only works if the installed
+ * Damai version exposes a matching URL handler; it does not bypass app routing or channel rules.
+ * If Damai has no matching handler, fall back to Android's normal browser/link resolution.
  */
 fun openConcertLink(context: Context, link: String) {
     val uri = Uri.parse(link.trim())
     if ((uri.scheme != "https" && uri.scheme != "http") || uri.host.isNullOrBlank()) {
         throw IllegalArgumentException("Invalid event URL")
     }
-    val intent = Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    context.startActivity(intent)
+
+    val flags = Intent.FLAG_ACTIVITY_NEW_TASK
+    val damaiIntent = Intent(Intent.ACTION_VIEW, uri)
+        .setPackage("cn.damai")
+        .addFlags(flags)
+
+    try {
+        context.startActivity(damaiIntent)
+    } catch (_: android.content.ActivityNotFoundException) {
+        val browserIntent = Intent(Intent.ACTION_VIEW, uri).addFlags(flags)
+        context.startActivity(browserIntent)
+    }
 }
 
 suspend fun fetchPageInfo(link: String): PageInfo? = withContext(Dispatchers.IO) {
