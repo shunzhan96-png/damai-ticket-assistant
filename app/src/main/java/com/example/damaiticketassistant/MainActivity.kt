@@ -482,9 +482,9 @@ fun openDamaiApp(context: Context) {
 }
 
 /**
- * Try handing the exact saved event URL to Damai first. This only works if the installed
- * Damai version exposes a matching URL handler; it does not bypass app routing or channel rules.
- * If Damai has no matching handler, fall back to Android's normal browser/link resolution.
+ * Hand the exact saved event URL to Android's normal link resolver and report which
+ * app Android selected. This does not guarantee that Damai will open the event detail page;
+ * the page monitor must confirm the visible title after navigation.
  */
 fun openConcertLink(context: Context, link: String): String {
     val uri = Uri.parse(link.trim())
