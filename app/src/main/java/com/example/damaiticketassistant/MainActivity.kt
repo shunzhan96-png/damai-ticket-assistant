@@ -147,7 +147,33 @@ fun ConcertApp() {
                         val remain=c.saleTime-now
                         Text(if(remain<=0) "已到开售时间" else "倒计时："+formatDuration(remain), style=MaterialTheme.typography.bodyLarge)
                         Text("开售："+SimpleDateFormat("yyyy-MM-dd HH:mm",Locale.getDefault()).format(Date(c.saleTime)))
-                        OutlinedButton(onClick={ quickPrepConcert = c }, modifier=Modifier.fillMaxWidth()) { Text("购票准备清单") }
+                        Button(
+                            onClick = {
+                                try {
+                                    prefs.edit()
+                                        .putInt("active_event_id", c.id)
+                                        .putString("active_event_title", c.title)
+                                        .putBoolean("monitor_enabled", true)
+                                        .putString("page_monitor_status", "辅助任务已启动；正在检查当前大麦页面")
+                                        .apply()
+                                    val routeResult = if (c.url.isNotBlank()) {
+                                        openConcertLink(context, c.url)
+                                    } else {
+                                        openDamaiApp(context)
+                                        "此演出没有保存链接，已打开大麦App；请手动进入演出详情"
+                                    }
+                                    persist(concerts, "辅助任务已启动；" + routeResult + "；目标：" + c.title)
+                                } catch (e: Exception) {
+                                    prefs.edit()
+                                        .putBoolean("monitor_enabled", false)
+                                        .putString("page_monitor_status", "启动失败：" + (e.message ?: "无法打开目标页面"))
+                                        .apply()
+                                    persist(concerts, "辅助任务启动失败：" + (e.message ?: "无法打开目标页面"))
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("启动辅助任务") }
+                        OutlinedButton(onClick={ quickPrepConcert = c }, modifier=Modifier.fillMaxWidth()) { Text("购票准备清单与检查频率") }
                         Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                             Button(onClick={
                                 try {
