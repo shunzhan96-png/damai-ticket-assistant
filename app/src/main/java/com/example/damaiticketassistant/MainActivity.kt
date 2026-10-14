@@ -417,16 +417,11 @@ fun openConcertLink(context: Context, link: String) {
     }
 
     val flags = Intent.FLAG_ACTIVITY_NEW_TASK
-    val damaiIntent = Intent(Intent.ACTION_VIEW, uri)
-        .setPackage("cn.damai")
-        .addFlags(flags)
-
-    try {
-        context.startActivity(damaiIntent)
-    } catch (_: android.content.ActivityNotFoundException) {
-        val browserIntent = Intent(Intent.ACTION_VIEW, uri).addFlags(flags)
-        context.startActivity(browserIntent)
-    }
+    // Do not force cn.damai here. Forcing a package can send generic/unrecognized URLs
+    // to the app's launcher/home screen instead of allowing Android App Links to resolve
+    // the exact event route. Let Android choose the verified handler first.
+    val viewIntent = Intent(Intent.ACTION_VIEW, uri).addFlags(flags)
+    context.startActivity(viewIntent)
 }
 
 suspend fun fetchPageInfo(link: String): PageInfo? = withContext(Dispatchers.IO) {
