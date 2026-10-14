@@ -79,9 +79,9 @@ class DamaiPageMonitorService : AccessibilityService() {
                 schedulePeriodicInspection()
                 return@Runnable
             }
-            // The inspection itself checks the active package. Avoid fetching the
-            // accessibility tree twice per interval, which can make low-end phones lag.
-            scheduleInspection()
+            // A timer tick performs at most one bounded inspection. If a UI event
+            // already queued an inspection, let that pending task handle this interval.
+            if (pendingInspection == null) inspectCurrentWindow()
             schedulePeriodicInspection()
         }
         periodicInspection = task
