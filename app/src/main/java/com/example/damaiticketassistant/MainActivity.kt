@@ -62,6 +62,7 @@ fun ConcertApp() {
     var pageMonitorStatus by remember {
         mutableStateOf(prefs.getString("page_monitor_status", "尚未启用页面状态识别服务") ?: "尚未启用页面状态识别服务")
     }
+    var pageMonitorUpdatedAt by remember { mutableLongStateOf(prefs.getLong("page_monitor_updated_at", 0L)) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
     LaunchedEffect(Unit) {
@@ -69,6 +70,7 @@ fun ConcertApp() {
             now = System.currentTimeMillis()
             pageMonitorStatus = prefs.getString("page_monitor_status", "尚未启用页面状态识别服务")
                 ?: "尚未启用页面状态识别服务"
+            pageMonitorUpdatedAt = prefs.getLong("page_monitor_updated_at", 0L)
             kotlinx.coroutines.delay(1000)
         }
     }
@@ -163,6 +165,11 @@ fun ConcertApp() {
         Divider()
         Text("页面识别状态", style=MaterialTheme.typography.titleMedium)
         Text(pageMonitorStatus, style=MaterialTheme.typography.bodySmall)
+        Text(
+            if (pageMonitorUpdatedAt > 0L) "最近检查：" + SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(pageMonitorUpdatedAt))
+            else "最近检查：暂无记录",
+            style = MaterialTheme.typography.labelSmall
+        )
         Spacer(Modifier.height(6.dp))
         Text("最近操作", style=MaterialTheme.typography.titleMedium)
         Text(log, style=MaterialTheme.typography.bodySmall)
