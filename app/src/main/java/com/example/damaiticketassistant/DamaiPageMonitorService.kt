@@ -35,6 +35,7 @@ class DamaiPageMonitorService : AccessibilityService() {
 
         // Coalesce bursts of content events. Inspect once after the UI settles.
         scheduleInspection()
+        if (periodicInspection == null) schedulePeriodicInspection()
     }
 
     override fun onInterrupt() {
