@@ -125,8 +125,9 @@ fun ConcertApp() {
                             OutlinedButton(
                                 onClick={
                                     try {
+                                        prefs.edit().putInt("active_event_id", c.id).putString("active_event_title", c.title).apply()
                                         openConcertLink(context, c.url)
-                                        persist(concerts,"已尝试打开演出链接；是否进入大麦详情取决于手机和大麦的链接关联："+c.title)
+                                        persist(concerts,"已尝试打开演出链接；正在等待页面识别结果："+c.title)
                                     } catch (_:Exception) {
                                         persist(concerts,"演出链接无法打开，请检查链接或复制到大麦App："+c.title)
                                     }
@@ -366,8 +367,9 @@ fun ConcertApp() {
                         onClick = {
                             try {
                                 if (target.url.isNotBlank()) {
+                                    prefs.edit().putInt("active_event_id", target.id).putString("active_event_title", target.title).apply()
                                     openConcertLink(context, target.url)
-                                    persist(concerts, "已尝试打开演出链接：" + target.title + "。请核对是否进入正确详情页。")
+                                    persist(concerts, "已尝试打开演出链接，正在等待页面识别结果：" + target.title)
                                 } else {
                                     persist(concerts, "该演出还没有保存链接，请在大麦内搜索：" + target.title)
                                 }
