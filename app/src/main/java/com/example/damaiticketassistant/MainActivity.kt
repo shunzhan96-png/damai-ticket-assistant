@@ -116,12 +116,25 @@ fun ConcertApp() {
                         Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                             Button(onClick={
                                 try {
-                                    context.startActivity(buildDamaiIntent(context, c.url))
-                                    persist(concerts,"已打开官方页面："+c.title)
+                                    openDamaiApp(context)
+                                    persist(concerts,"已请求启动大麦App（进入演出详情需在大麦内继续查找）："+c.title)
                                 } catch (_:Exception) {
-                                    persist(concerts,"打开失败：请检查购票链接")
+                                    persist(concerts,"无法启动大麦App：请确认已安装大麦App")
                                 }
-                            }, enabled=c.url.startsWith("https://") || c.url.startsWith("http://")) { Text("优先打开大麦App") }
+                            }) { Text("打开大麦App") }
+                            OutlinedButton(
+                                onClick={
+                                    try {
+                                        openConcertLink(context, c.url)
+                                        persist(concerts,"已尝试打开演出链接；是否进入大麦详情取决于手机和大麦的链接关联："+c.title)
+                                    } catch (_:Exception) {
+                                        persist(concerts,"演出链接无法打开，请检查链接或复制到大麦App："+c.title)
+                                    }
+                                },
+                                enabled=c.url.startsWith("https://") || c.url.startsWith("http://")
+                            ) { Text("打开演出链接") }
+                        }
+                        Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                             OutlinedButton(onClick={
                                 val trigger=c.saleTime-10*60*1000L
                                 if(trigger>System.currentTimeMillis()) {
@@ -274,32 +287,42 @@ fun ConcertApp() {
             },
             confirmButton = {
                 TextButton(onClick = {
-                    if (target.url.startsWith("https://") || target.url.startsWith("http://")) {
-                        try {
-                            context.startActivity(buildDamaiIntent(context, target.url))
-                            persist(concerts, "已从购票准备清单打开官方入口：" + target.title)
-                        } catch (_: Exception) {
-                            persist(concerts, "官方入口打开失败，请检查链接：" + target.title)
-                        }
-                    } else {
-                        persist(concerts, "该演出尚未填写有效购票链接：" + target.title)
+                    try {
+                        openDamaiApp(context)
+                        persist(concerts, "已请求启动大麦App。若要进入指定演出，请使用演出卡片中的“打开演出链接”或在大麦内搜索：" + target.title)
+                    } catch (_: Exception) {
+                        persist(concerts, "无法启动大麦App：请确认已安装大麦App")
                     }
                     quickPrepConcert = null
-                }) { Text("打开官方购票入口") }
+                }) { Text("启动大麦App") }
             },
             dismissButton = { TextButton(onClick = { quickPrepConcert = null }) { Text("稍后再说") } }
         )
     }
 }
 
-fun buildDamaiIntent(context: Context, link: String): Intent {
-    val uri = Uri.parse(link)
-    val appIntent = Intent(Intent.ACTION_VIEW, uri).setPackage("cn.damai")
-    return if (appIntent.resolveActivity(context.packageManager) != null) {
-        appIntent
-    } else {
-        Intent(Intent.ACTION_VIEW, uri)
+/**
+ * Launch the installed Damai app through its public launcher entry point.
+ * This reliably targets the app when installed, but does not promise a specific event page.
+ */
+fun openDamaiApp(context: Context) {
+    val launchIntent = context.packageManager.getLaunchIntentForPackage("cn.damai")
+        ?: throw android.content.ActivityNotFoundException("Damai app is not installed or cannot be resolved")
+    launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    context.startActivity(launchIntent)
+}
+
+/**
+ * Open the saved HTTPS/HTTP event URL using Android's normal link resolution.
+ * Android/Damai decide whether the URL can be handed to the app; otherwise a browser may open.
+ */
+fun openConcertLink(context: Context, link: String) {
+    val uri = Uri.parse(link.trim())
+    if ((uri.scheme != "https" && uri.scheme != "http") || uri.host.isNullOrBlank()) {
+        throw IllegalArgumentException("Invalid event URL")
     }
+    val intent = Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    context.startActivity(intent)
 }
 
 suspend fun fetchPageInfo(link: String): PageInfo? = withContext(Dispatchers.IO) {
