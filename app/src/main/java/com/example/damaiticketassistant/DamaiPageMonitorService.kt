@@ -79,10 +79,9 @@ class DamaiPageMonitorService : AccessibilityService() {
                 schedulePeriodicInspection()
                 return@Runnable
             }
-            val root = rootInActiveWindow
-            val isDamaiVisible = root?.packageName?.toString() == DAMAI_PACKAGE
-            root?.recycle()
-            if (isDamaiVisible) scheduleInspection()
+            // The inspection itself checks the active package. Avoid fetching the
+            // accessibility tree twice per interval, which can make low-end phones lag.
+            scheduleInspection()
             schedulePeriodicInspection()
         }
         periodicInspection = task
