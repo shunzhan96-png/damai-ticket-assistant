@@ -42,6 +42,31 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         if (Build.VERSION.SDK_INT >= 33) askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
         setContent { MaterialTheme { Surface(Modifier.fillMaxSize()) { ConcertApp() } } }
+        if (intent.getBooleanExtra("openEventLink", false)) {
+            val eventId = intent.getIntExtra("eventId", -1)
+            val eventTitle = intent.getStringExtra("eventTitle").orEmpty()
+            val prefs = getSharedPreferences("damai_assistant", MODE_PRIVATE)
+            val target = loadConcerts(prefs).firstOrNull { it.id == eventId }
+            if (target != null && target.url.isNotBlank()) {
+                prefs.edit()
+                    .putInt("active_event_id", target.id)
+                    .putString("active_event_title", target.title)
+                    .putBoolean("monitor_enabled", true)
+                    .putString("page_monitor_status", "已从开售提醒启动辅助任务；正在打开目标链接")
+                    .apply()
+                try {
+                    val routeResult = openConcertLink(this, target.url)
+                    prefs.edit().putString("log_last", "已从提醒打开目标演出；" + routeResult + "；目标：" + target.title).apply()
+                } catch (_: Exception) {
+                    prefs.edit()
+                        .putBoolean("monitor_enabled", false)
+                        .putString("log_last", "提醒已打开助手，但目标链接无法打开：" + target.title)
+                        .apply()
+                }
+            } else if (eventTitle.isNotBlank()) {
+                prefs.edit().putString("log_last", "已从开售提醒打开助手；该演出没有可用链接：" + eventTitle).apply()
+            }
+        }
     }
 }
 
