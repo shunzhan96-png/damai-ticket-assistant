@@ -90,6 +90,11 @@ class DamaiPageMonitorService : AccessibilityService() {
     }
 
     private fun inspectCurrentWindow() {
+        if (!getSharedPreferences("damai_assistant", MODE_PRIVATE)
+                .getBoolean("monitor_enabled", false)) {
+            saveStatusIfChanged("辅助任务已停止；页面识别暂不执行")
+            return
+        }
         lastInspectionAt = System.currentTimeMillis()
         getSharedPreferences("damai_assistant", MODE_PRIVATE).edit()
             .putLong("page_monitor_updated_at", lastInspectionAt)
