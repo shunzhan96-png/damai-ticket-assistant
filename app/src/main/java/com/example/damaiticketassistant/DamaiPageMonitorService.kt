@@ -51,7 +51,9 @@ class DamaiPageMonitorService : AccessibilityService() {
     }
 
     private fun scheduleInspection() {
-        pendingInspection?.let(handler::removeCallbacks)
+        // Keep the first pending inspection instead of resetting its timer on every
+        // accessibility event; otherwise a continuously updating page can starve checks.
+        if (pendingInspection != null) return
         val prefs = getSharedPreferences("damai_assistant", MODE_PRIVATE)
         val eventId = prefs.getInt("active_event_id", -1)
         val intervalSeconds = prefs.getInt("check_interval_$eventId", DEFAULT_CHECK_INTERVAL_SECONDS)
