@@ -8,7 +8,8 @@ import android.view.accessibility.AccessibilityNodeInfo
 
 /**
  * Lightweight, read-only monitor for the visible Damai UI.
- * Event-driven: no periodic full-window polling, no clicks, no order submission.
+ * Bounded event-driven inspection plus a short-interval check only while the user has started a task.
+ * Read-only: no clicks, no order submission.
  */
 class DamaiPageMonitorService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
@@ -22,10 +23,10 @@ class DamaiPageMonitorService : AccessibilityService() {
         val enabled = getSharedPreferences("damai_assistant", MODE_PRIVATE)
             .getBoolean("monitor_enabled", false)
         saveStatusIfChanged(if (enabled) "辅助任务已启用；等待大麦页面变化" else "页面识别服务已连接；辅助任务尚未启动")
-        if (enabled) scheduleInspection()
-        // Lightweight preference heartbeat lets the app's Start button activate monitoring
-        // even when the accessibility service was already connected before the task started.
-        schedulePeriodicInspection()
+        if (enabled) {
+            scheduleInspection()
+            schedulePeriodicInspection()
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -75,8 +76,7 @@ class DamaiPageMonitorService : AccessibilityService() {
             val enabled = getSharedPreferences("damai_assistant", MODE_PRIVATE)
                 .getBoolean("monitor_enabled", false)
             if (!enabled) {
-                saveStatusIfChanged("页面识别服务已连接；辅助任务尚未启动")
-                schedulePeriodicInspection()
+                saveStatusIfChanged("辅助任务已停止；页面识别暂不执行")
                 return@Runnable
             }
             // A timer tick performs at most one bounded inspection. If a UI event
