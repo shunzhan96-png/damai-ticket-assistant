@@ -558,16 +558,24 @@ fun openConcertLink(context: Context, link: String): String {
             Uri.parse("dmcategory://item?itemId=$itemId")
         ).setPackage("cn.damai").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         if (detailDeepLink.resolveActivity(context.packageManager) != null) {
-            context.startActivity(detailDeepLink)
-            return "已通过大麦演出详情深链打开（编号 $itemId）；请核对页面标题是否与目标一致"
+            try {
+                context.startActivity(detailDeepLink)
+                return "已请求大麦打开演出详情深链（编号 $itemId）；仍需由页面识别确认目标标题"
+            } catch (_: Exception) {
+                // Continue to the mobile detail URL and original share URL.
+            }
         }
 
         val mobileDetailUri = Uri.parse("https://m.damai.cn/shows/item.html?itemId=$itemId")
         val mobileDetailIntent = Intent(Intent.ACTION_VIEW, mobileDetailUri)
             .setPackage("cn.damai").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         if (mobileDetailIntent.resolveActivity(context.packageManager) != null) {
-            context.startActivity(mobileDetailIntent)
-            return "已尝试通过大麦移动版详情链接打开（编号 $itemId）；请核对页面标题"
+            try {
+                context.startActivity(mobileDetailIntent)
+                return "已请求大麦处理移动版详情链接（编号 $itemId）；仍需由页面识别确认目标标题"
+            } catch (_: Exception) {
+                // Continue to the original share URL below.
+            }
         }
     }
 
