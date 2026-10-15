@@ -518,9 +518,41 @@ fun openConcertLink(context: Context, link: String): String {
         throw IllegalArgumentException("链接格式无效：请粘贴完整的 http/https 活动链接")
     }
 
-    // First ask Damai itself to handle the exact original URL. Only do this when
-    // Android confirms that the installed Damai app has a matching URL handler; never
-    // fall back to its launcher intent, which would open the home page.
+    val host = uri.host!!.lowercase(Locale.ROOT)
+    val isDamaiHost = host == "damai.cn" || host.endsWith(".damai.cn") ||
+        host == "damai.com" || host.endsWith(".damai.com")
+    val itemId = if (isDamaiHost) {
+        val fromItemId = uri.getQueryParameter("itemId")
+        val fromLegacyItem = if (uri.path.orEmpty().endsWith("/item.htm")) {
+            uri.getQueryParameter("id")
+        } else null
+        (fromItemId ?: fromLegacyItem)?.takeIf { it.matches(Regex("\\d+")) }
+    } else null
+
+    // Some shared links use a web route that the installed app handles only as
+    // a generic landing page. If a known event ID is present, first try the
+    // event-detail deep link; only use it when Android confirms Damai handles it.
+    if (itemId != null) {
+        val detailDeepLink = Intent(
+            Intent.ACTION_VIEW,
+            Uri.parse("dmcategory://item?itemId=$itemId")
+        ).setPackage("cn.damai").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (detailDeepLink.resolveActivity(context.packageManager) != null) {
+            context.startActivity(detailDeepLink)
+            return "已通过大麦演出详情深链打开（编号 $itemId）；请核对页面标题是否与目标一致"
+        }
+
+        val mobileDetailUri = Uri.parse("https://m.damai.cn/shows/item.html?itemId=$itemId")
+        val mobileDetailIntent = Intent(Intent.ACTION_VIEW, mobileDetailUri)
+            .setPackage("cn.damai").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (mobileDetailIntent.resolveActivity(context.packageManager) != null) {
+            context.startActivity(mobileDetailIntent)
+            return "已尝试通过大麦移动版详情链接打开（编号 $itemId）；请核对页面标题"
+        }
+    }
+
+    // Fall back to the exact original URL. Never use the launcher intent here,
+    // because that would silently open the Damai home page instead of the event.
     val damaiIntent = Intent(Intent.ACTION_VIEW, uri)
         .setPackage("cn.damai")
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -532,7 +564,7 @@ fun openConcertLink(context: Context, link: String): String {
     try {
         context.startActivity(intent)
         return when {
-            damaiHandler != null -> "已将原始链接直接交给大麦App的匹配页面处理；仍需核对目标演出标题"
+            damaiHandler != null -> "已将原始链接交给大麦App处理；仍需核对目标演出标题"
             resolvedPackage == null -> "已交给Android链接解析；系统未能预先报告处理应用"
             else -> "大麦未声明匹配此链接的处理页面；Android选择了 $resolvedPackage"
         }
