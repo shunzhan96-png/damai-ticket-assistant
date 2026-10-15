@@ -88,6 +88,7 @@ fun ConcertApp() {
         mutableStateOf(prefs.getString("page_monitor_status", "尚未启用页面状态识别服务") ?: "尚未启用页面状态识别服务")
     }
     var pageMonitorUpdatedAt by remember { mutableLongStateOf(prefs.getLong("page_monitor_updated_at", 0L)) }
+    var pageDetectedSummary by remember { mutableStateOf(prefs.getString("page_detected_summary", "尚未读取到页面数据") ?: "尚未读取到页面数据") }
     var monitorEnabled by remember { mutableStateOf(prefs.getBoolean("monitor_enabled", false)) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
@@ -97,6 +98,7 @@ fun ConcertApp() {
             pageMonitorStatus = prefs.getString("page_monitor_status", "尚未启用页面状态识别服务")
                 ?: "尚未启用页面状态识别服务"
             pageMonitorUpdatedAt = prefs.getLong("page_monitor_updated_at", 0L)
+            pageDetectedSummary = prefs.getString("page_detected_summary", "尚未读取到页面数据") ?: "尚未读取到页面数据"
             monitorEnabled = prefs.getBoolean("monitor_enabled", false)
             log = prefs.getString("log_last", "暂无操作记录") ?: "暂无操作记录"
             kotlinx.coroutines.delay(1000)
@@ -153,6 +155,7 @@ fun ConcertApp() {
                                     prefs.edit()
                                         .putInt("active_event_id", c.id)
                                         .putString("active_event_title", c.title)
+                                        .putBoolean("buy_entry_clicked_${c.id}", false)
                                         .putBoolean("monitor_enabled", true)
                                         .putString("page_monitor_status", "辅助任务已启动；正在检查当前大麦页面")
                                         .apply()
@@ -219,6 +222,8 @@ fun ConcertApp() {
         Divider()
         Text("页面识别状态", style=MaterialTheme.typography.titleMedium)
         Text(pageMonitorStatus, style=MaterialTheme.typography.bodySmall)
+        Text("最近读取到的演出信息", style=MaterialTheme.typography.titleSmall, modifier=Modifier.padding(top=6.dp))
+        Text(pageDetectedSummary, style=MaterialTheme.typography.bodySmall)
         Text(
             if (pageMonitorUpdatedAt > 0L) "最近检查：" + SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(pageMonitorUpdatedAt))
             else "最近检查：暂无记录",
