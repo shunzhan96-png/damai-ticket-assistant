@@ -7,9 +7,9 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 
 /**
- * Lightweight, read-only monitor for the visible Damai UI.
- * Bounded event-driven inspection plus a short-interval check only while the user has started a task.
- * Read-only: no clicks, no order submission.
+ * Monitors visible text in the official Damai app, and may click only the ordinary
+ * purchase-entry button when the user explicitly enables that option.
+ * Never handles CAPTCHA, queue bypass, order submission, or payment.
  */
 class DamaiPageMonitorService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
@@ -129,6 +129,8 @@ class DamaiPageMonitorService : AccessibilityService() {
         val prefs = getSharedPreferences("damai_assistant", MODE_PRIVATE)
         val targetTitle = prefs.getString("active_event_title", "").orEmpty().trim()
         val titleMatched = targetTitle.isNotBlank() && pageText.contains(targetTitle, ignoreCase = true)
+        val detectedSummary = buildDetectedSummary(pageText, targetTitle, titleMatched)
+        prefs.edit().putString("page_detected_summary", detectedSummary).apply()
 
         val blockedByVerificationOrQueue = containsAny(
             pageText, "验证码", "安全验证", "滑动验证", "人机验证",
@@ -172,6 +174,43 @@ class DamaiPageMonitorService : AccessibilityService() {
             else -> "已读取大麦当前页面；尚未匹配到明确状态"
         }
         saveStatusIfChanged(state)
+    }
+
+    /**
+     * Show only a compact, relevant subset of visible page text rather than saving the
+     * entire accessibility tree (which could contain account or order details).
+     * These are clues from the currently visible page, not verified inventory data.
+     */
+    private fun buildDetectedSummary(pageText: String, targetTitle: String, titleMatched: Boolean): String {
+        val compact = pageText.replace(Regex("\\s+"), " ").trim()
+        val snippets = compact.split(Regex("(?<=[。；;])\\s*|(?<=\\s)"))
+            .map { it.trim() }
+            .filter { token ->
+                token.isNotBlank() && (
+                    token.contains("场次") || token.contains("日期") ||
+                    token.contains("开售") || token.contains("预售") ||
+                    token.contains("票档") || token.contains("价格") ||
+                    token.contains("¥") || token.contains("￥") ||
+                    Regex("\\b\\d{2,5}\\s*元?\\b").containsMatchIn(token) ||
+                    token.contains("立即购买") || token.contains("立即预订") ||
+                    token.contains("缺货登记") || token.contains("选座")
+                )
+            }
+            .distinct()
+            .take(8)
+            .joinToString("；")
+            .take(420)
+        val titleLine = when {
+            targetTitle.isBlank() -> "目标演出：未设置"
+            titleMatched -> "目标演出：已在当前页面匹配到“$targetTitle”"
+            else -> "目标演出：当前页面未匹配到“$targetTitle”"
+        }
+        val dataLine = if (snippets.isBlank()) {
+            "未从当前可见页面提取到场次、票档或价格线索。请在大麦App打开演出详情后等待识别。"
+        } else {
+            "页面线索：$snippets"
+        }
+        return "$titleLine\\n$dataLine\\n说明：仅提取屏幕可见文字，不代表实时库存或购票成功。"
     }
 
     private fun saveStatusIfChanged(status: String) {
