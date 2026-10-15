@@ -42,6 +42,31 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         if (Build.VERSION.SDK_INT >= 33) askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
         setContent { MaterialTheme { Surface(Modifier.fillMaxSize()) { ConcertApp() } } }
+        if (intent.getBooleanExtra("openEventLink", false)) {
+            val eventId = intent.getIntExtra("eventId", -1)
+            val eventTitle = intent.getStringExtra("eventTitle").orEmpty()
+            val prefs = getSharedPreferences("damai_assistant", MODE_PRIVATE)
+            val target = loadConcerts(prefs).firstOrNull { it.id == eventId }
+            if (target != null && target.url.isNotBlank()) {
+                prefs.edit()
+                    .putInt("active_event_id", target.id)
+                    .putString("active_event_title", target.title)
+                    .putBoolean("monitor_enabled", true)
+                    .putString("page_monitor_status", "已从开售提醒启动辅助任务；正在打开目标链接")
+                    .apply()
+                try {
+                    val routeResult = openConcertLink(this, target.url)
+                    prefs.edit().putString("log_last", "已从提醒打开目标演出；" + routeResult + "；目标：" + target.title).apply()
+                } catch (_: Exception) {
+                    prefs.edit()
+                        .putBoolean("monitor_enabled", false)
+                        .putString("log_last", "提醒已打开助手，但目标链接无法打开：" + target.title)
+                        .apply()
+                }
+            } else if (eventTitle.isNotBlank()) {
+                prefs.edit().putString("log_last", "已从开售提醒打开助手；该演出没有可用链接：" + eventTitle).apply()
+            }
+        }
     }
 }
 
@@ -62,6 +87,9 @@ fun ConcertApp() {
     var pageMonitorStatus by remember {
         mutableStateOf(prefs.getString("page_monitor_status", "尚未启用页面状态识别服务") ?: "尚未启用页面状态识别服务")
     }
+    var pageMonitorUpdatedAt by remember { mutableLongStateOf(prefs.getLong("page_monitor_updated_at", 0L)) }
+    var pageDetectedSummary by remember { mutableStateOf(prefs.getString("page_detected_summary", "尚未读取到页面数据") ?: "尚未读取到页面数据") }
+    var monitorEnabled by remember { mutableStateOf(prefs.getBoolean("monitor_enabled", false)) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
     LaunchedEffect(Unit) {
@@ -69,6 +97,10 @@ fun ConcertApp() {
             now = System.currentTimeMillis()
             pageMonitorStatus = prefs.getString("page_monitor_status", "尚未启用页面状态识别服务")
                 ?: "尚未启用页面状态识别服务"
+            pageMonitorUpdatedAt = prefs.getLong("page_monitor_updated_at", 0L)
+            pageDetectedSummary = prefs.getString("page_detected_summary", "尚未读取到页面数据") ?: "尚未读取到页面数据"
+            monitorEnabled = prefs.getBoolean("monitor_enabled", false)
+            log = prefs.getString("log_last", "暂无操作记录") ?: "暂无操作记录"
             kotlinx.coroutines.delay(1000)
         }
     }
@@ -117,7 +149,34 @@ fun ConcertApp() {
                         val remain=c.saleTime-now
                         Text(if(remain<=0) "已到开售时间" else "倒计时："+formatDuration(remain), style=MaterialTheme.typography.bodyLarge)
                         Text("开售："+SimpleDateFormat("yyyy-MM-dd HH:mm",Locale.getDefault()).format(Date(c.saleTime)))
-                        OutlinedButton(onClick={ quickPrepConcert = c }, modifier=Modifier.fillMaxWidth()) { Text("购票准备清单") }
+                        Button(
+                            onClick = {
+                                try {
+                                    prefs.edit()
+                                        .putInt("active_event_id", c.id)
+                                        .putString("active_event_title", c.title)
+                                        .putBoolean("buy_entry_clicked_${c.id}", false)
+                                        .putBoolean("monitor_enabled", true)
+                                        .putString("page_monitor_status", "辅助任务已启动；正在检查当前大麦页面")
+                                        .apply()
+                                    val routeResult = if (c.url.isNotBlank()) {
+                                        openConcertLink(context, c.url)
+                                    } else {
+                                        openDamaiApp(context)
+                                        "此演出没有保存链接，已打开大麦App；请手动进入演出详情"
+                                    }
+                                    persist(concerts, "辅助任务已启动；" + routeResult + "；目标：" + c.title)
+                                } catch (e: Exception) {
+                                    prefs.edit()
+                                        .putBoolean("monitor_enabled", false)
+                                        .putString("page_monitor_status", "启动失败：" + (e.message ?: "无法打开目标页面"))
+                                        .apply()
+                                    persist(concerts, "辅助任务启动失败：" + (e.message ?: "无法打开目标页面"))
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("启动辅助任务") }
+                        OutlinedButton(onClick={ quickPrepConcert = c }, modifier=Modifier.fillMaxWidth()) { Text("购票准备清单与检查频率") }
                         Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                             Button(onClick={
                                 try {
@@ -131,8 +190,8 @@ fun ConcertApp() {
                                 onClick={
                                     try {
                                         prefs.edit().putInt("active_event_id", c.id).putString("active_event_title", c.title).apply()
-                                        openConcertLink(context, c.url)
-                                        persist(concerts,"已尝试打开演出链接；正在等待页面识别结果："+c.title)
+                                        val routeResult = openConcertLink(context, c.url)
+                                        persist(concerts,"已尝试打开演出链接；"+routeResult+"；目标："+c.title)
                                     } catch (_:Exception) {
                                         persist(concerts,"演出链接无法打开，请检查链接或复制到大麦App："+c.title)
                                     }
@@ -163,6 +222,26 @@ fun ConcertApp() {
         Divider()
         Text("页面识别状态", style=MaterialTheme.typography.titleMedium)
         Text(pageMonitorStatus, style=MaterialTheme.typography.bodySmall)
+        Text("最近读取到的演出信息", style=MaterialTheme.typography.titleSmall, modifier=Modifier.padding(top=6.dp))
+        Text(pageDetectedSummary, style=MaterialTheme.typography.bodySmall)
+        Text(
+            if (pageMonitorUpdatedAt > 0L) "最近检查：" + SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(pageMonitorUpdatedAt))
+            else "最近检查：暂无记录",
+            style = MaterialTheme.typography.labelSmall
+        )
+        if (monitorEnabled) {
+            OutlinedButton(
+                onClick = {
+                    prefs.edit()
+                        .putBoolean("monitor_enabled", false)
+                        .putString("page_monitor_status", "辅助任务已停止")
+                        .putLong("page_monitor_updated_at", System.currentTimeMillis())
+                        .apply()
+                    persist(concerts, "已手动停止辅助任务")
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("停止当前辅助任务") }
+        }
         Spacer(Modifier.height(6.dp))
         Text("最近操作", style=MaterialTheme.typography.titleMedium)
         Text(log, style=MaterialTheme.typography.bodySmall)
@@ -274,6 +353,9 @@ fun ConcertApp() {
         var checkIntervalSeconds by remember(target.id) {
             mutableIntStateOf(prefs.getInt("check_interval_${target.id}", 2).coerceIn(1, 5))
         }
+        var assistClickBuyEntry by remember(target.id) {
+            mutableStateOf(prefs.getBoolean("assist_click_buy_${target.id}", false))
+        }
         val checklist = listOf(
             "已确认演出名称和官方链接",
             "已在大麦本人账号登录",
@@ -313,6 +395,22 @@ fun ConcertApp() {
                     Divider()
                     val monitorStatus = prefs.getString("page_monitor_status", "尚未启用页面状态识别服务") ?: "尚未启用页面状态识别服务"
                     Text("当前识别状态：$monitorStatus", style = MaterialTheme.typography.bodySmall)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Checkbox(
+                            checked = assistClickBuyEntry,
+                            onCheckedChange = { enabled ->
+                                assistClickBuyEntry = enabled
+                                prefs.edit().putBoolean("assist_click_buy_${target.id}", enabled).apply()
+                            }
+                        )
+                        Column(modifier = Modifier.padding(top = 8.dp)) {
+                            Text("辅助点击普通购票入口", style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                "仅在目标演出标题匹配后，尝试点击“立即购买/立即预订”入口；默认关闭。不会选择票档、提交订单、支付，也不会处理验证码或排队。",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
                     Text("页面检查频率", style = MaterialTheme.typography.titleSmall)
                     Text("每隔 ${checkIntervalSeconds} 秒检查一次当前大麦页面状态（需手动开启无障碍服务）。", style = MaterialTheme.typography.bodyMedium)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -344,7 +442,7 @@ fun ConcertApp() {
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) { Text("设置页面状态识别权限") }
-                    Text("当前阶段只识别页面状态并记录结果，不会自动点击下单或绕过排队、验证码；这些环节由你本人处理。", style = MaterialTheme.typography.bodySmall)
+                    Text("默认只识别页面状态。若你主动勾选辅助点击，只会在目标标题匹配后尝试点击普通购票入口；票档、订单、支付、登录、验证码和排队均由你本人处理。", style = MaterialTheme.typography.bodySmall)
                 }
             },
             confirmButton = {
@@ -356,28 +454,47 @@ fun ConcertApp() {
                         modifier = Modifier.fillMaxWidth(),
                         onClick = {
                             try {
-                                prefs.edit().putInt("active_event_id", target.id).putString("active_event_title", target.title).apply()
+                                prefs.edit()
+                                    .putInt("active_event_id", target.id)
+                                    .putString("active_event_title", target.title)
+                                    .putInt("check_interval_${target.id}", checkIntervalSeconds)
+                                    .putBoolean("assist_click_buy_${target.id}", assistClickBuyEntry)
+                                    .putBoolean("monitor_enabled", true)
+                                    .putString("page_monitor_status", "辅助任务已启动；等待读取大麦页面")
+                                    .apply()
                                 if (target.url.isNotBlank()) {
-                                    openConcertLink(context, target.url)
-                                    persist(concerts, "已快速尝试进入目标演出入口：" + target.title + "。请确认页面确实对应目标演出。")
+                                    val routeResult = openConcertLink(context, target.url)
+                                    persist(concerts, "已启动辅助任务；" + routeResult + "；目标：" + target.title)
                                 } else {
                                     openDamaiApp(context)
-                                    persist(concerts, "该演出没有保存链接，已启动大麦App；请搜索目标演出：" + target.title)
+                                    persist(concerts, "已启动辅助任务并打开大麦App；请手动进入目标演出：" + target.title)
                                 }
                                 quickPrepConcert = null
                             } catch (_: Exception) {
-                                persist(concerts, "快速进入失败，请使用下方“启动大麦App”并手动搜索：" + target.title)
+                                prefs.edit().putBoolean("monitor_enabled", false).apply()
+                                persist(concerts, "辅助任务启动失败：链接无法打开，请检查链接或手动进入大麦：" + target.title)
                             }
                         }
-                    ) { Text("快速进入目标演出") }
+                    ) { Text("开始辅助任务并进入演出") }
+                    OutlinedButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            prefs.edit()
+                                .putBoolean("monitor_enabled", false)
+                                .putString("page_monitor_status", "辅助任务已停止")
+                                .putLong("page_monitor_updated_at", System.currentTimeMillis())
+                                .apply()
+                            persist(concerts, "已手动停止辅助任务：" + target.title)
+                        }
+                    ) { Text("停止辅助任务") }
                     OutlinedButton(
                         modifier = Modifier.fillMaxWidth(),
                         onClick = {
                             try {
                                 if (target.url.isNotBlank()) {
                                     prefs.edit().putInt("active_event_id", target.id).putString("active_event_title", target.title).apply()
-                                    openConcertLink(context, target.url)
-                                    persist(concerts, "已尝试打开演出链接，正在等待页面识别结果：" + target.title)
+                                    val routeResult = openConcertLink(context, target.url)
+                                    persist(concerts, "已尝试打开演出链接；" + routeResult + "；目标：" + target.title)
                                 } else {
                                     persist(concerts, "该演出还没有保存链接，请在大麦内搜索：" + target.title)
                                 }
@@ -416,26 +533,77 @@ fun openDamaiApp(context: Context) {
 }
 
 /**
- * Try handing the exact saved event URL to Damai first. This only works if the installed
- * Damai version exposes a matching URL handler; it does not bypass app routing or channel rules.
- * If Damai has no matching handler, fall back to Android's normal browser/link resolution.
+ * Hand the exact saved event URL to Android's normal link resolver and report which
+ * app Android selected. This does not guarantee that Damai will open the event detail page;
+ * the page monitor must confirm the visible title after navigation.
  */
-fun openConcertLink(context: Context, link: String) {
+fun openConcertLink(context: Context, link: String): String {
     val uri = Uri.parse(link.trim())
     if ((uri.scheme != "https" && uri.scheme != "http") || uri.host.isNullOrBlank()) {
-        throw IllegalArgumentException("Invalid event URL")
+        throw IllegalArgumentException("链接格式无效：请粘贴完整的 http/https 活动链接")
     }
 
-    // Pass the user's original event URL to Android's normal resolver. Do not force
-    // the Damai package or rewrite the URL to a legacy route: either can land on home
-    // when the installed Damai version no longer handles that route.
-    val intent = Intent(Intent.ACTION_VIEW, uri)
+    val host = uri.host!!.lowercase(Locale.ROOT)
+    val isDamaiHost = host == "damai.cn" || host.endsWith(".damai.cn") ||
+        host == "damai.com" || host.endsWith(".damai.com")
+    val itemId = if (isDamaiHost) {
+        val fromItemId = uri.getQueryParameter("itemId")
+        val fromLegacyItem = if (uri.path.orEmpty().endsWith("/item.htm")) {
+            uri.getQueryParameter("id")
+        } else null
+        (fromItemId ?: fromLegacyItem)?.takeIf { it.matches(Regex("\\d+")) }
+    } else null
+
+    // Some shared links use a web route that the installed app handles only as
+    // a generic landing page. If a known event ID is present, first try the
+    // event-detail deep link; only use it when Android confirms Damai handles it.
+    if (itemId != null) {
+        val detailDeepLink = Intent(
+            Intent.ACTION_VIEW,
+            Uri.parse("dmcategory://item?itemId=$itemId")
+        ).setPackage("cn.damai").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (detailDeepLink.resolveActivity(context.packageManager) != null) {
+            try {
+                context.startActivity(detailDeepLink)
+                return "已请求大麦打开演出详情深链（编号 $itemId）；仍需由页面识别确认目标标题"
+            } catch (_: Exception) {
+                // Continue to the mobile detail URL and original share URL.
+            }
+        }
+
+        val mobileDetailUri = Uri.parse("https://m.damai.cn/shows/item.html?itemId=$itemId")
+        val mobileDetailIntent = Intent(Intent.ACTION_VIEW, mobileDetailUri)
+            .setPackage("cn.damai").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (mobileDetailIntent.resolveActivity(context.packageManager) != null) {
+            try {
+                context.startActivity(mobileDetailIntent)
+                return "已请求大麦处理移动版详情链接（编号 $itemId）；仍需由页面识别确认目标标题"
+            } catch (_: Exception) {
+                // Continue to the original share URL below.
+            }
+        }
+    }
+
+    // Fall back to the exact original URL. Never use the launcher intent here,
+    // because that would silently open the Damai home page instead of the event.
+    val damaiIntent = Intent(Intent.ACTION_VIEW, uri)
+        .setPackage("cn.damai")
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    val damaiHandler = damaiIntent.resolveActivity(context.packageManager)
+    val intent = if (damaiHandler != null) damaiIntent else {
+        Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    val resolvedPackage = intent.resolveActivity(context.packageManager)?.packageName
     try {
         context.startActivity(intent)
+        return when {
+            damaiHandler != null -> "已将原始链接交给大麦App处理；仍需核对目标演出标题"
+            resolvedPackage == null -> "已交给Android链接解析；系统未能预先报告处理应用"
+            else -> "大麦未声明匹配此链接的处理页面；Android选择了 $resolvedPackage"
+        }
     } catch (_: android.content.ActivityNotFoundException) {
         throw android.content.ActivityNotFoundException(
-            "No installed app can open this event link: $uri"
+            "没有已安装的应用能够打开该链接：$uri"
         )
     }
 }

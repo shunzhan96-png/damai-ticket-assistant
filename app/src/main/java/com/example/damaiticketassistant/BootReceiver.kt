@@ -15,7 +15,14 @@ class BootReceiver : BroadcastReceiver() {
                 val e = arr.getJSONObject(i)
                 val time = e.optLong("saleTime", 0L)
                 val id = e.optInt("id", i + 1)
-                if (time > System.currentTimeMillis()) AlarmScheduler.schedule(context, id, e.optString("title"), time - 10 * 60 * 1000L)
+                if (time > System.currentTimeMillis()) {
+                    val title = e.optString("title", "演出")
+                    val earlyTime = time - 10 * 60 * 1000L
+                    if (earlyTime > System.currentTimeMillis()) {
+                        AlarmScheduler.schedule(context, id, title, earlyTime)
+                    }
+                    AlarmScheduler.schedule(context, id, title, time, true)
+                }
             }
             prefs.edit().putString("log_last", "手机重启后已检查并恢复提醒").apply()
         } catch (_: Exception) {
