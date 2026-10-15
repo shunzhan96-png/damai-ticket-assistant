@@ -348,6 +348,9 @@ fun ConcertApp() {
         var checkIntervalSeconds by remember(target.id) {
             mutableIntStateOf(prefs.getInt("check_interval_${target.id}", 2).coerceIn(1, 5))
         }
+        var assistClickBuyEntry by remember(target.id) {
+            mutableStateOf(prefs.getBoolean("assist_click_buy_${target.id}", false))
+        }
         val checklist = listOf(
             "已确认演出名称和官方链接",
             "已在大麦本人账号登录",
@@ -387,6 +390,22 @@ fun ConcertApp() {
                     Divider()
                     val monitorStatus = prefs.getString("page_monitor_status", "尚未启用页面状态识别服务") ?: "尚未启用页面状态识别服务"
                     Text("当前识别状态：$monitorStatus", style = MaterialTheme.typography.bodySmall)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Checkbox(
+                            checked = assistClickBuyEntry,
+                            onCheckedChange = { enabled ->
+                                assistClickBuyEntry = enabled
+                                prefs.edit().putBoolean("assist_click_buy_${target.id}", enabled).apply()
+                            }
+                        )
+                        Column(modifier = Modifier.padding(top = 8.dp)) {
+                            Text("辅助点击普通购票入口", style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                "仅在目标演出标题匹配后，尝试点击“立即购买/立即预订”入口；默认关闭。不会选择票档、提交订单、支付，也不会处理验证码或排队。",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
                     Text("页面检查频率", style = MaterialTheme.typography.titleSmall)
                     Text("每隔 ${checkIntervalSeconds} 秒检查一次当前大麦页面状态（需手动开启无障碍服务）。", style = MaterialTheme.typography.bodyMedium)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -418,7 +437,7 @@ fun ConcertApp() {
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) { Text("设置页面状态识别权限") }
-                    Text("当前阶段只识别页面状态并记录结果，不会自动点击下单或绕过排队、验证码；这些环节由你本人处理。", style = MaterialTheme.typography.bodySmall)
+                    Text("默认只识别页面状态。若你主动勾选辅助点击，只会在目标标题匹配后尝试点击普通购票入口；票档、订单、支付、登录、验证码和排队均由你本人处理。", style = MaterialTheme.typography.bodySmall)
                 }
             },
             confirmButton = {
@@ -434,6 +453,7 @@ fun ConcertApp() {
                                     .putInt("active_event_id", target.id)
                                     .putString("active_event_title", target.title)
                                     .putInt("check_interval_${target.id}", checkIntervalSeconds)
+                                    .putBoolean("assist_click_buy_${target.id}", assistClickBuyEntry)
                                     .putBoolean("monitor_enabled", true)
                                     .putString("page_monitor_status", "辅助任务已启动；等待读取大麦页面")
                                     .apply()
