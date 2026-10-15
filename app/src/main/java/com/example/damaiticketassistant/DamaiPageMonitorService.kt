@@ -130,6 +130,26 @@ class DamaiPageMonitorService : AccessibilityService() {
         val targetTitle = prefs.getString("active_event_title", "").orEmpty().trim()
         val titleMatched = targetTitle.isNotBlank() && pageText.contains(targetTitle, ignoreCase = true)
 
+        val blockedByVerificationOrQueue = containsAny(
+            pageText, "验证码", "安全验证", "滑动验证", "人机验证",
+            "排队中", "排队等待", "前方还有", "排队人数",
+            "确认支付", "立即支付", "支付订单", "收银台",
+            "登录", "手机号登录", "验证码登录", "立即登录"
+        )
+        val assistClickEnabled = prefs.getBoolean("assist_click_buy_${prefs.getInt("active_event_id", -1)}", false)
+        val clickAlreadyAttempted = prefs.getBoolean("buy_entry_clicked_${prefs.getInt("active_event_id", -1)}", false)
+        val buyEntryClicked = titleMatched &&
+            containsAny(pageText, "立即购买", "立即预订") &&
+            assistClickEnabled &&
+            !blockedByVerificationOrQueue &&
+            !clickAlreadyAttempted &&
+            findAndClickPurchaseEntry(rootInActiveWindow)
+        if (buyEntryClicked) {
+            prefs.edit()
+                .putBoolean("buy_entry_clicked_${prefs.getInt("active_event_id", -1)}", true)
+                .apply()
+        }
+
         val state = when {
             containsAny(pageText, "验证码", "安全验证", "滑动验证", "人机验证") ->
                 "检测到验证码/安全验证，请本人完成；助手不会尝试处理验证"
@@ -139,6 +159,8 @@ class DamaiPageMonitorService : AccessibilityService() {
                 "检测到支付相关页面，请本人核对订单并完成支付"
             containsAny(pageText, "登录", "手机号登录", "验证码登录", "立即登录") ->
                 "检测到登录相关页面，请本人登录"
+            buyEntryClicked ->
+                "已匹配目标演出“$targetTitle”，并已尝试点击普通购票入口；请本人确认页面变化"
             titleMatched && containsAny(pageText, "选座", "选择票档", "立即购买", "立即预订", "开售提醒", "缺货登记") ->
                 "已匹配目标演出名称，且识别到演出操作控件：$targetTitle"
             titleMatched ->
@@ -181,6 +203,41 @@ class DamaiPageMonitorService : AccessibilityService() {
             collectVisibleText(child, output, depth + 1, count)
             child.recycle()
         }
+    }
+
+    private fun findAndClickPurchaseEntry(root: AccessibilityNodeInfo?): Boolean {
+        if (root == null) return false
+        return try {
+            findAndClickPurchaseEntryRecursive(root, 0, intArrayOf(0))
+        } finally {
+            root.recycle()
+        }
+    }
+
+    private fun findAndClickPurchaseEntryRecursive(
+        node: AccessibilityNodeInfo,
+        depth: Int,
+        count: IntArray
+    ): Boolean {
+        if (depth > MAX_DEPTH || count[0] >= MAX_NODES) return false
+        count[0]++
+        val label = listOfNotNull(node.text?.toString(), node.contentDescription?.toString())
+            .joinToString(" ").trim()
+        val exactPurchaseLabel = label == "立即购买" || label == "立即预订"
+        if (node.isVisibleToUser && node.isEnabled && node.isClickable && exactPurchaseLabel) {
+            return node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        }
+        for (i in 0 until node.childCount) {
+            if (count[0] >= MAX_NODES) break
+            val child = node.getChild(i) ?: continue
+            val clicked = try {
+                findAndClickPurchaseEntryRecursive(child, depth + 1, count)
+            } finally {
+                child.recycle()
+            }
+            if (clicked) return true
+        }
+        return false
     }
 
     private fun containsAny(text: String, vararg terms: String): Boolean =
