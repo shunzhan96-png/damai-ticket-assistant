@@ -183,19 +183,13 @@ class DamaiPageMonitorService : AccessibilityService() {
      */
     private fun buildDetectedSummary(pageText: String, targetTitle: String, titleMatched: Boolean): String {
         val compact = pageText.replace(Regex("\\s+"), " ").trim()
-        val snippets = compact.split(Regex("(?<=[。；;])\\s*|(?<=\\s)"))
-            .map { it.trim() }
-            .filter { token ->
-                token.isNotBlank() && (
-                    token.contains("场次") || token.contains("日期") ||
-                    token.contains("开售") || token.contains("预售") ||
-                    token.contains("票档") || token.contains("价格") ||
-                    token.contains("¥") || token.contains("￥") ||
-                    Regex("\\b\\d{2,5}\\s*元?\\b").containsMatchIn(token) ||
-                    token.contains("立即购买") || token.contains("立即预订") ||
-                    token.contains("缺货登记") || token.contains("选座")
-                )
-            }
+        val cluePattern = Regex(
+            ".{0,24}(?:场次|日期|开售|预售|开票|票档|价格|¥|￥|立即购买|立即预订|缺货登记|选座|\\d{2,5}\\s*元).{0,36}",
+            RegexOption.IGNORE_CASE
+        )
+        val snippets = cluePattern.findAll(compact)
+            .map { it.value.trim().trim(' ', '；', ';', '。', '，', ',') }
+            .filter { it.isNotBlank() }
             .distinct()
             .take(8)
             .joinToString("；")
@@ -210,7 +204,7 @@ class DamaiPageMonitorService : AccessibilityService() {
         } else {
             "页面线索：$snippets"
         }
-        return "$titleLine\\n$dataLine\\n说明：仅提取屏幕可见文字，不代表实时库存或购票成功。"
+        return "$titleLine\n$dataLine\n说明：仅提取屏幕可见文字，不代表实时库存或购票成功。"
     }
 
     private fun saveStatusIfChanged(status: String) {
